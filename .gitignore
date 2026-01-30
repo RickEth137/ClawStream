@@ -20,6 +20,3 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
-
-# Live2D models (download separately)
-public/models/
