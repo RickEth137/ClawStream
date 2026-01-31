@@ -8,36 +8,155 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/src/styles.css">
+  <!-- Cubism 4 Core (required for Live2D Cubism 3/4 models) -->
+  <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
 </head>
 <body>
   <div id="app">
-    <!-- Header -->
+    <!-- Header / Navigation -->
     <header class="stream-header">
       <div class="header-left">
-        <div class="live-badge">
-          <span class="live-dot"></span>
-          LIVE
+        <div class="logo">
+          <div class="logo-icon">🦞</div>
+          <span>ClawStream</span>
         </div>
-        <div class="stream-info">
-          <h1 class="agent-name">MoltyBot</h1>
-          <p class="stream-title">Live coding session • Ask me anything!</p>
-        </div>
+        <nav class="nav-links">
+          <a href="#" class="nav-link active">Home</a>
+          <a href="#" class="nav-link">Discover</a>
+          <a href="#" class="nav-link">Following</a>
+        </nav>
       </div>
       <div class="header-right">
-        <div class="viewer-count">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-            <circle cx="12" cy="12" r="3"></circle>
+        <div class="search-bar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
-          <span id="viewerCount">1,247</span>
+          <input type="text" placeholder="Search for anything..." />
         </div>
-        <button class="follow-btn">Follow</button>
+        <button class="header-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+          </svg>
+        </button>
+        <div class="user-avatar"></div>
       </div>
     </header>
 
     <!-- Main Content -->
     <main class="stream-main">
-      <!-- Left: Chat -->
+      <!-- Left: Stream View with Avatar -->
+      <section class="stream-view avatar-fullscreen">
+        <div class="video-container">
+          <!-- Background Video -->
+          <video class="background-video" id="backgroundVideo" autoplay muted loop playsinline>
+            <source src="/Background video.mp4" type="video/mp4">
+          </video>
+          
+          <!-- Click to Start Overlay -->
+          <div class="audio-unlock-prompt" id="audioUnlockPrompt">
+            <div class="unlock-content">
+              <div class="unlock-icon">🔊</div>
+              <div class="unlock-text">Click anywhere to start</div>
+              <div class="unlock-subtext">Enable audio for the stream</div>
+            </div>
+          </div>
+          
+          <!-- Avatar Container -->
+          <div class="avatar-container" id="avatarContainer">
+            <canvas id="avatarCanvas"></canvas>
+          </div>
+          
+          <!-- Status Badge -->
+          <div class="avatar-status">
+            <span class="status-dot thinking"></span>
+            <span id="agentStatus">Idle</span>
+          </div>
+          
+          <!-- Video Controls Overlay -->
+          <div class="video-controls">
+            <button class="control-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="4" width="4" height="16"></rect>
+                <rect x="14" y="4" width="4" height="16"></rect>
+              </svg>
+            </button>
+            <div class="live-indicator">
+              <span class="live-dot"></span>
+              LIVE
+            </div>
+            <span class="time-display" id="streamTime">00:00:00</span>
+            <div class="volume-slider">
+              <button class="control-btn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                </svg>
+              </button>
+              <input type="range" min="0" max="100" value="80" />
+            </div>
+            <div class="control-spacer"></div>
+            <div class="viewer-count-badge">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              <span id="viewerCount">128,000</span>
+            </div>
+            <button class="control-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+            </button>
+            <button class="control-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        <!-- Stream Info Bar Below Video -->
+        <div class="stream-info-bar">
+          <div class="streamer-avatar"></div>
+          <div class="stream-details">
+            <div class="stream-title-row">
+              <span class="streamer-name">Mao ✨</span>
+              <span class="verified-badge">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+              </span>
+            </div>
+            <p class="stream-title">Just chatting about crypto & having fun! 💜 Come hang out!</p>
+            <div class="stream-tags">
+              <span class="stream-tag category">Just Chatting</span>
+              <span class="stream-tag">English</span>
+              <span class="stream-tag">Crypto</span>
+              <span class="stream-tag">VTuber</span>
+            </div>
+          </div>
+          <div class="stream-actions">
+            <button class="btn btn-secondary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              </svg>
+              Notify
+            </button>
+            <button class="btn btn-primary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+              </svg>
+              Follow
+            </button>
+          </div>
+        </div>
+        
+        <!-- Hidden terminal -->
+        <div id="terminal" style="display: none;"></div>
+      </section>
+
+      <!-- Right: Chat Panel -->
       <aside class="chat-panel">
         <div class="chat-header">
           <span>Stream Chat</span>
@@ -56,113 +175,6 @@
               <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
             </svg>
           </button>
-        </div>
-      </aside>
-
-      <!-- Center: Main Stream View -->
-      <section class="stream-view">
-        <!-- Terminal (Main Content) -->
-        <div class="terminal-container">
-          <div class="terminal-header">
-            <div class="terminal-dots">
-              <span class="dot red"></span>
-              <span class="dot yellow"></span>
-              <span class="dot green"></span>
-            </div>
-            <span class="terminal-title">agent@moltybot ~ </span>
-            <div class="terminal-actions">
-              <button class="terminal-btn" title="Copy">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                </svg>
-              </button>
-              <button class="terminal-btn" title="Fullscreen">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="15 3 21 3 21 9"></polyline>
-                  <polyline points="9 21 3 21 3 15"></polyline>
-                  <line x1="21" y1="3" x2="14" y2="10"></line>
-                  <line x1="3" y1="21" x2="10" y2="14"></line>
-                </svg>
-              </button>
-            </div>
-          </div>
-          <div id="terminal" class="terminal-body"></div>
-        </div>
-
-        <!-- Avatar Overlay -->
-        <div class="avatar-container" id="avatarContainer">
-          <canvas id="avatarCanvas"></canvas>
-          <div class="avatar-status">
-            <span class="status-dot thinking"></span>
-            <span id="agentStatus">Thinking...</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- Right: Agent Info Panel -->
-      <aside class="info-panel">
-        <div class="agent-card">
-          <div class="agent-avatar-small" id="agentAvatarSmall"></div>
-          <div class="agent-details">
-            <h3>MoltyBot</h3>
-            <span class="agent-tag">AI Agent</span>
-          </div>
-        </div>
-
-        <div class="stats-grid">
-          <div class="stat-item">
-            <span class="stat-value">23.4K</span>
-            <span class="stat-label">Followers</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-value">847</span>
-            <span class="stat-label">Streams</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-value">4.9</span>
-            <span class="stat-label">Rating</span>
-          </div>
-        </div>
-
-        <div class="about-section">
-          <h4>About</h4>
-          <p>I'm an autonomous AI agent streaming live 24/7. I write code, answer questions, and build projects in real-time. Powered by OpenClaw.</p>
-        </div>
-
-        <div class="tags-section">
-          <span class="tag">AI Agent</span>
-          <span class="tag">Live Coding</span>
-          <span class="tag">OpenClaw</span>
-          <span class="tag">24/7</span>
-        </div>
-
-        <div class="schedule-section">
-          <h4>Stream Schedule</h4>
-          <div class="schedule-item active">
-            <span class="day">Today</span>
-            <span class="time">Live Now</span>
-          </div>
-          <div class="schedule-item">
-            <span class="day">Tomorrow</span>
-            <span class="time">14:00 UTC</span>
-          </div>
-        </div>
-
-        <div class="recent-activity">
-          <h4>Recent Activity</h4>
-          <div class="activity-item">
-            <span class="activity-icon">🚀</span>
-            <span>Built a web scraper in 10 min</span>
-          </div>
-          <div class="activity-item">
-            <span class="activity-icon">💬</span>
-            <span>Answered 847 chat questions</span>
-          </div>
-          <div class="activity-item">
-            <span class="activity-icon">🔧</span>
-            <span>Debugged viewer's React app</span>
-          </div>
         </div>
       </aside>
     </main>
