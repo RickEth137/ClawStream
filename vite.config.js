@@ -1,19 +1,30 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from "vite";
 
 export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/socket.io': {
-        target: 'http://localhost:3001',
-        ws: true
+      "/socket.io": {
+        target: "http://localhost:3001",
+        ws: true,
+        changeOrigin: true
       },
-      '/api': {
-        target: 'http://localhost:3001'
+      "/api": {
+        target: "http://localhost:3001",
+        changeOrigin: true
+      },
+      "/tts": {
+        target: "http://localhost:3001",
+        changeOrigin: true
+      },
+      "/avatar": {
+        target: "http://localhost:3001",
+        changeOrigin: true
       }
     }
   },
   build: {
-    outDir: 'dist'
-  }
+    outDir: "dist"
+  },
+  appType: "spa"
 });

@@ -14,7 +14,6 @@ const elevenlabs = new ElevenLabsClient({
 });
 
 // Voice ID for "Lulu Lolipop - High-Pitched and Bubbly"
-// We'll fetch the actual voice ID on startup
 let VOICE_ID = null;
 
 // Create temp directory for audio files
@@ -30,55 +29,68 @@ async function findVoice() {
   try {
     console.log('🔍 Searching for Lulu Lolipop voice...');
     const response = await elevenlabs.voices.getAll();
-    
-    // Handle different response structures
     const voices = response.voices || response;
-    
-    // Search for Lulu voice
-    const luluVoice = voices.find(v => 
-      v.name && (v.name.toLowerCase().includes('lulu') || 
+
+    const luluVoice = voices.find(v =>
+      v.name && (v.name.toLowerCase().includes('lulu') ||
       v.name.toLowerCase().includes('lolipop'))
     );
-    
+
     if (luluVoice) {
-      // Try different property names for voice ID
       VOICE_ID = luluVoice.voice_id || luluVoice.voiceId || luluVoice.id;
       console.log(`✅ Found Lulu voice: ${luluVoice.name} (ID: ${VOICE_ID})`);
     } else {
-      // List available voices for debugging
-      console.log('Available voices:');
-      voices.slice(0, 15).forEach(v => {
-        const id = v.voice_id || v.voiceId || v.id;
-        console.log(`  - ${v.name}: ${id}`);
-      });
-      
-      // Use first available voice
       const fallback = voices[0];
       VOICE_ID = fallback.voice_id || fallback.voiceId || fallback.id;
       console.log(`⚠️ Lulu not found, using: ${fallback.name} (${VOICE_ID})`);
     }
   } catch (error) {
     console.error('❌ Error fetching voices:', error.message);
-    // Fallback to a known voice ID (Rachel)
     VOICE_ID = '21m00Tcm4TlvDq8ikWAM';
     console.log(`⚠️ Using fallback voice ID: ${VOICE_ID}`);
   }
 }
 
-// Initialize voice on module load
 findVoice();
 
-// Export the temp directory for serving files
 export const TTS_TEMP_DIR = TEMP_DIR;
 
 /**
+ * Strip avatar control tags from text for TTS
+ * Removes things like [happy], [wave], [raise_left_hand], etc.
+ */
+function stripTagsForTTS(text) {
+  // Remove all [tag] patterns - emotions, actions, effects, etc.
+  return text
+    // Emotions
+    .replace(/\[(neutral|happy|excited|sad|angry|surprised|thinking|confused|wink|love|smug|sleepy)\]/gi, '')
+    // Gestures and actions (COMPLETE list!)
+    .replace(/\[(wave|nod|shake|dance|bow|shrug|point|think|wonder|doubt|shy|cute|flirt|heart|love|magic_heart|magic|trick|rabbit)\]/gi, '')
+    // Arm controls
+    .replace(/\[(raise_left_hand|raise_right_hand|raise_left_arm|raise_right_arm|raise_both_hands|raise_both_arms|lower_left_arm|lower_right_arm|lower_arms)\]/gi, '')
+    // Eye/look direction
+    .replace(/\[(look_left|look_right|look_up|look_down)\]/gi, '')
+    // Special effects
+    .replace(/\[(hearts|magic|explosion|aura)\]/gi, '')
+    // Catch any remaining [tags] we might have missed
+    .replace(/\[[a-z_]+\]/gi, '')
+    .replace(/\s+/g, ' ')  // Collapse multiple spaces
+    .trim();
+}
+
+/**
  * Generate speech from text using ElevenLabs
- * @param {string} text - The text to convert to speech
- * @returns {Promise<string>} - URL path to the generated audio file (relative to server)
  */
 export async function generateSpeech(text) {
   if (!text || text.trim().length === 0) {
     throw new Error('No text provided for TTS');
+  }
+
+  // Strip avatar tags before TTS!
+  const cleanText = stripTagsForTTS(text);
+  
+  if (!cleanText || cleanText.length === 0) {
+    throw new Error('No speakable text after stripping tags');
   }
 
   // Wait for voice to be loaded
@@ -87,33 +99,29 @@ export async function generateSpeech(text) {
     await new Promise(r => setTimeout(r, 500));
     attempts++;
   }
-  
+
   if (!VOICE_ID) {
-    VOICE_ID = '21m00Tcm4TlvDq8ikWAM'; // Rachel fallback
+    VOICE_ID = '21m00Tcm4TlvDq8ikWAM';
   }
 
   try {
-    console.log(`🎤 Generating TTS for: "${text.slice(0, 50)}..."`);
-    console.log(`🎤 Using voice ID: ${VOICE_ID}`);
-    
-    // Generate audio using ElevenLabs convert method with optimized settings
+    console.log(`🎤 TTS (clean): "${cleanText.slice(0, 50)}..."`);
+
     const audio = await elevenlabs.textToSpeech.convert(VOICE_ID, {
-      text: text,
-      modelId: 'eleven_turbo_v2_5',  // Fastest model available
-      outputFormat: 'mp3_44100_64',   // Lower quality = faster generation
+      text: cleanText,
+      modelId: 'eleven_turbo_v2_5',
+      outputFormat: 'mp3_44100_64',
       voiceSettings: {
         stability: 0.4,
         similarityBoost: 0.85,
-        style: 0.5,              // Reduced style for speed
-        useSpeakerBoost: false   // Disable for speed
+        style: 0.5,
+        useSpeakerBoost: false
       }
     });
 
-    // Create unique filename
     const filename = `voice-${Date.now()}.mp3`;
     const filepath = path.join(TEMP_DIR, filename);
 
-    // Write audio to file - audio is an async iterator
     const chunks = [];
     for await (const chunk of audio) {
       chunks.push(chunk);
@@ -122,8 +130,6 @@ export async function generateSpeech(text) {
     fs.writeFileSync(filepath, buffer);
 
     console.log(`✅ TTS generated: ${filepath}`);
-    
-    // Return just the filename - server will serve from /tts/
     return `/tts/${filename}`;
 
   } catch (error) {
@@ -132,21 +138,16 @@ export async function generateSpeech(text) {
   }
 }
 
-/**
- * Clean up old audio files (older than 5 minutes)
- */
 export function cleanupOldFiles() {
   try {
     if (!fs.existsSync(TEMP_DIR)) return;
-
     const files = fs.readdirSync(TEMP_DIR);
     const now = Date.now();
-    const maxAge = 5 * 60 * 1000; // 5 minutes
+    const maxAge = 5 * 60 * 1000;
 
     files.forEach(file => {
       const filepath = path.join(TEMP_DIR, file);
       const stats = fs.statSync(filepath);
-      
       if (now - stats.mtimeMs > maxAge) {
         fs.unlinkSync(filepath);
         console.log(`🗑️ Cleaned up old TTS file: ${file}`);
@@ -157,16 +158,12 @@ export function cleanupOldFiles() {
   }
 }
 
-// Clean up old files every 2 minutes
 setInterval(cleanupOldFiles, 2 * 60 * 1000);
 
-// Clean up on process exit
 process.on('exit', () => {
   try {
     if (fs.existsSync(TEMP_DIR)) {
       fs.rmSync(TEMP_DIR, { recursive: true, force: true });
     }
-  } catch (e) {
-    // Ignore cleanup errors
-  }
+  } catch (e) {}
 });
