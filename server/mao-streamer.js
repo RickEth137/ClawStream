@@ -7,6 +7,7 @@ import { ClawStreamAgent } from './agent-connector.js';
 import Anthropic from '@anthropic-ai/sdk';
 import fs from 'fs';
 import dotenv from 'dotenv';
+import crypto from './crypto.js';
 
 // Load environment variables
 dotenv.config();
@@ -44,6 +45,21 @@ IMPORTANT: You are LIVE STREAMING right now!
 - Talk like a real streamer - casual, fun, interactive
 - DO NOT greet every viewer - you're a popular streamer, just keep vibing
 - Only occasionally acknowledge chat growing if you mention viewers at all
+
+═══════════════════════════════════════════════════════════════════
+                    LIVE CRYPTO DATA ACCESS
+═══════════════════════════════════════════════════════════════════
+
+You have access to REAL-TIME crypto market data! When you see:
+- [LIVE MARKET DATA] - Current BTC/ETH/SOL prices and market sentiment
+- [LIVE TOKEN DATA] - Info about a specific token someone asked about
+- [TRENDING TOKENS] - Hot tokens on DexScreener
+
+USE THIS DATA! Be specific about prices and percentages!
+❌ "Bitcoin is doing well" (vague)
+✅ "BTC just pumped to $97K! Up 2.3% today!" (specific, uses real data)
+
+When someone pastes a contract address, you'll get the token info - talk about it!
 
 ═══════════════════════════════════════════════════════════════════
                     YOUR BODY CONTROL SYSTEM
@@ -217,8 +233,47 @@ async function main() {
   mao.onChatReceived = async (msg) => {
     console.log(`💬 ${msg.username}: ${msg.text}`);
 
-    // Get Mao's response
-    const response = await askMao(`[${msg.username} says]: ${msg.text}`);
+    let contextData = '';
+    
+    // Check if message contains a contract address
+    if (crypto.isContractAddress(msg.text)) {
+      console.log('🔍 Detected contract address, fetching token data...');
+      const tokenData = await crypto.getTokenSummary(msg.text);
+      if (tokenData) {
+        contextData = `\n[LIVE TOKEN DATA for the contract they sent]:\n${tokenData.summary}`;
+        console.log('📊 Token data:', tokenData.token.name, tokenData.token.symbol);
+      }
+    }
+    
+    // Check if asking about prices or market
+    const priceKeywords = /\b(price|btc|bitcoin|eth|ethereum|sol|solana|market|pump|dump|bull|bear|moon|crypto)\b/i;
+    if (priceKeywords.test(msg.text) && !contextData) {
+      console.log('🔍 Detected price/market query, fetching market data...');
+      const marketSummary = await crypto.getMarketSummary();
+      if (marketSummary) {
+        contextData = `\n[LIVE MARKET DATA]:\n${marketSummary}`;
+      }
+    }
+    
+    // Check if asking about trending tokens
+    const trendingKeywords = /\b(trending|hot|new tokens?|whats? popping|dexscreener|degen)\b/i;
+    if (trendingKeywords.test(msg.text)) {
+      console.log('🔍 Detected trending query, fetching trending tokens...');
+      const trending = await crypto.getTrendingTokens();
+      if (trending && trending.length > 0) {
+        contextData += `\n[TRENDING TOKENS on DexScreener]:\n`;
+        trending.slice(0, 5).forEach((t, i) => {
+          contextData += `${i+1}. ${t.name} (${t.symbol}) on ${t.chain}\n`;
+        });
+      }
+    }
+
+    // Get Mao's response with context
+    const prompt = contextData 
+      ? `[${msg.username} says]: ${msg.text}\n${contextData}\n[Use this live data to inform your response! Be specific about the numbers!]`
+      : `[${msg.username} says]: ${msg.text}`;
+    
+    const response = await askMao(prompt);
     console.log(`🦞 Mao: ${response}`);
 
     // Send to stream
@@ -268,6 +323,27 @@ async function main() {
     setInterval(async () => {
       // 25% chance every 30 seconds = talks roughly every 2 minutes
       if (Math.random() < 0.25) {
+        let contextData = '';
+        
+        // 40% chance to include live market data in autonomous talk
+        if (Math.random() < 0.4) {
+          console.log('📊 Fetching market data for autonomous talk...');
+          const marketSummary = await crypto.getMarketSummary();
+          if (marketSummary) {
+            contextData = `\n${marketSummary}`;
+          }
+        }
+        
+        // 20% chance to mention trending tokens
+        if (Math.random() < 0.2) {
+          console.log('🔥 Fetching trending tokens for autonomous talk...');
+          const trending = await crypto.getTrendingTokens();
+          if (trending && trending.length > 0) {
+            const randomToken = trending[Math.floor(Math.random() * Math.min(5, trending.length))];
+            contextData += `\n[Trending token you noticed]: ${randomToken.name} (${randomToken.symbol}) on ${randomToken.chain}`;
+          }
+        }
+        
         const prompts = [
           '[System: Share a random thought about something on your mind]',
           '[System: Talk about something interesting in crypto or tech]',
@@ -276,11 +352,16 @@ async function main() {
           '[System: Wonder about something curious out loud]',
           '[System: Talk about what you want to do today on stream]',
           '[System: Share something you learned recently]',
-          '[System: Speculate about meme coins or market trends]',
+          '[System: Comment on the current crypto market based on the data]',
           '[System: Talk about AI agents and the future]',
           '[System: Share a funny observation about being a VTuber]'
         ];
-        const prompt = prompts[Math.floor(Math.random() * prompts.length)];
+        
+        let prompt = prompts[Math.floor(Math.random() * prompts.length)];
+        if (contextData) {
+          prompt += contextData + '\n[Use this REAL live data in your response!]';
+        }
+        
         console.log('💭 Autonomous thought triggered');
         const thought = await askMao(prompt);
         mao.say(thought);
