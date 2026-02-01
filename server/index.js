@@ -687,6 +687,119 @@ app.get('/skill.md', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'skill.md'));
 });
 
+// Connection codes for OpenClaw pairing
+const connectionCodes = new Map();
+
+// Create a new connection code
+app.post('/api/connection-codes', async (req, res) => {
+  const { code, agentName, model } = req.body;
+  const sessionId = req.cookies?.clawstream_session;
+  
+  if (!sessionId) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+  
+  // Get session from x-auth
+  const xAuth = await import('./x-auth.js');
+  const session = xAuth.sessions.get(sessionId);
+  
+  if (!session) {
+    return res.status(401).json({ error: 'Session expired' });
+  }
+  
+  connectionCodes.set(code, {
+    agentName,
+    model,
+    creatorUsername: session.xUsername,
+    createdAt: Date.now(),
+    connected: false
+  });
+  
+  // Expire after 10 minutes
+  setTimeout(() => connectionCodes.delete(code), 600000);
+  
+  res.json({ ok: true, code });
+});
+
+// Check connection code status
+app.get('/api/connection-codes/:code', (req, res) => {
+  const codeData = connectionCodes.get(req.params.code);
+  
+  if (!codeData) {
+    return res.status(404).json({ error: 'Code not found or expired' });
+  }
+  
+  res.json({ 
+    ok: true, 
+    connected: codeData.connected,
+    agentName: codeData.agentName
+  });
+});
+
+// OpenClaw connects with a code
+app.post('/api/connection-codes/:code/connect', (req, res) => {
+  const codeData = connectionCodes.get(req.params.code);
+  
+  if (!codeData) {
+    return res.status(404).json({ error: 'Code not found or expired' });
+  }
+  
+  codeData.connected = true;
+  codeData.openClawId = req.body.openClawId;
+  
+  res.json({ ok: true, message: 'Connected!' });
+});
+
+// Create a new agent
+app.post('/api/agents', async (req, res) => {
+  const sessionId = req.cookies?.clawstream_session;
+  
+  if (!sessionId) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+  
+  // Import session check dynamically
+  const xAuth = await import('./x-auth.js');
+  const session = xAuth.sessions.get(sessionId);
+  
+  if (!session) {
+    return res.status(401).json({ error: 'Session expired' });
+  }
+  
+  const { name, displayName, model, creatorName } = req.body;
+  
+  if (!name || !displayName) {
+    return res.status(400).json({ error: 'name and displayName required' });
+  }
+  
+  try {
+    // Check if agent already exists
+    const existing = await getAgent(name);
+    if (existing) {
+      return res.status(400).json({ error: 'Agent name already taken' });
+    }
+    
+    // Create the agent
+    const agent = await prisma.agent.create({
+      data: {
+        name: name.toLowerCase().replace(/\s+/g, '-'),
+        displayName,
+        creatorName: creatorName || `@${session.xUsername}`,
+        modelPath: model === 'mao' ? '/models/mao_pro_en/runtime/mao_pro.model3.json' : null,
+        avatar: '🧙‍♀️',
+        isActive: true
+      }
+    });
+    
+    console.log(`✅ Created agent: ${displayName} by @${session.xUsername}`);
+    
+    res.json({ ok: true, agent });
+  } catch (err) {
+    console.error('Failed to create agent:', err);
+    res.status(500).json({ error: 'Failed to create agent' });
+  }
+});
+
 app.get('/api/streams', (req, res) => res.json({ ok: true, streams: getActiveStreams() }));
 
 app.get('/api/streams/:id', (req, res) => { 

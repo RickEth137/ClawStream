@@ -814,6 +814,204 @@ class ChatSystem {
   }
 }
 
+// ============ SETUP WIZARD ============
+class SetupWizard {
+  constructor() {
+    this.currentStep = 1;
+    this.xAuthenticated = false;
+    this.xUsername = null;
+    this.agentName = '';
+    this.selectedModel = 'mao';
+    this.connectionCode = null;
+    this.agentConnected = false;
+  }
+  
+  async init() {
+    this.bindEvents();
+    await this.checkXAuth();
+  }
+  
+  bindEvents() {
+    // Step 1: X Login
+    document.getElementById('loginWithXBtn')?.addEventListener('click', () => {
+      // Redirect to X OAuth - we'll create the agent after auth
+      window.location.href = '/auth/x/login?agentId=new';
+    });
+    
+    document.getElementById('step1Next')?.addEventListener('click', () => {
+      if (this.xAuthenticated) this.goToStep(2);
+    });
+    
+    // Step 2: Name & Model
+    document.getElementById('agentNameInput')?.addEventListener('input', (e) => {
+      this.agentName = e.target.value.trim();
+      document.getElementById('step2Next').disabled = !this.agentName;
+    });
+    
+    document.getElementById('step2Back')?.addEventListener('click', () => this.goToStep(1));
+    document.getElementById('step2Next')?.addEventListener('click', () => {
+      if (this.agentName) this.goToStep(3);
+    });
+    
+    // Step 3: Skills
+    document.getElementById('downloadSkillsBtn')?.addEventListener('click', () => {
+      this.downloadSkills();
+    });
+    
+    document.getElementById('step3Back')?.addEventListener('click', () => this.goToStep(2));
+    document.getElementById('step3Next')?.addEventListener('click', () => {
+      this.goToStep(4);
+      this.startConnectionListener();
+    });
+    
+    // Step 4: Connect
+    document.getElementById('step4Back')?.addEventListener('click', () => this.goToStep(3));
+    document.getElementById('copyCodeBtn')?.addEventListener('click', () => {
+      navigator.clipboard.writeText(this.connectionCode);
+      document.getElementById('copyCodeBtn').textContent = '✓';
+      setTimeout(() => {
+        document.getElementById('copyCodeBtn').textContent = '📋';
+      }, 2000);
+    });
+    
+    document.getElementById('goLiveBtn')?.addEventListener('click', () => {
+      this.createAgentAndGoLive();
+    });
+  }
+  
+  async checkXAuth() {
+    try {
+      const res = await fetch('/auth/x/session', { credentials: 'include' });
+      const data = await res.json();
+      
+      if (data.authenticated) {
+        this.xAuthenticated = true;
+        this.xUsername = data.xUsername;
+        this.updateXAuthStatus(true, data.xUsername);
+        document.getElementById('step1Next').disabled = false;
+      }
+    } catch (e) {
+      console.log('X auth check failed');
+    }
+  }
+  
+  updateXAuthStatus(authenticated, username) {
+    const status = document.getElementById('xAuthStatus');
+    if (authenticated) {
+      status.innerHTML = `
+        <span class="status-icon">✅</span>
+        <span>Logged in as @${username}</span>
+      `;
+      status.classList.add('authenticated');
+      document.getElementById('loginWithXBtn').textContent = 'Change Account';
+    }
+  }
+  
+  goToStep(step) {
+    // Hide all steps
+    for (let i = 1; i <= 4; i++) {
+      document.getElementById(`setupStep${i}`)?.classList.add('hidden');
+    }
+    // Show target step
+    document.getElementById(`setupStep${step}`)?.classList.remove('hidden');
+    this.currentStep = step;
+    
+    // Generate connection code on step 4
+    if (step === 4) {
+      this.generateConnectionCode();
+    }
+  }
+  
+  downloadSkills() {
+    // Download the skill.md file
+    window.open('/skill.md', '_blank');
+  }
+  
+  generateConnectionCode() {
+    // Generate a unique connection code for this session
+    this.connectionCode = 'CS-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+    document.querySelector('#connectionCode code').textContent = this.connectionCode;
+    
+    // Register this code with the server
+    this.registerConnectionCode();
+  }
+  
+  async registerConnectionCode() {
+    try {
+      const res = await fetch('/api/connection-codes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          code: this.connectionCode,
+          agentName: this.agentName,
+          model: this.selectedModel
+        })
+      });
+      const data = await res.json();
+      console.log('Connection code registered:', data);
+    } catch (e) {
+      console.error('Failed to register connection code:', e);
+    }
+  }
+  
+  startConnectionListener() {
+    // Poll for connection status
+    this.connectionInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/connection-codes/${this.connectionCode}`, {
+          credentials: 'include'
+        });
+        const data = await res.json();
+        
+        if (data.connected) {
+          this.agentConnected = true;
+          document.getElementById('connectionStatus').classList.add('connected');
+          document.getElementById('goLiveBtn').disabled = false;
+          clearInterval(this.connectionInterval);
+        }
+      } catch (e) {
+        // Keep polling
+      }
+    }, 2000);
+  }
+  
+  async createAgentAndGoLive() {
+    try {
+      // Create the agent in the database
+      const res = await fetch('/api/agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: this.agentName.toLowerCase().replace(/\s+/g, '-'),
+          displayName: this.agentName,
+          model: this.selectedModel,
+          creatorName: `@${this.xUsername}`
+        })
+      });
+      
+      const data = await res.json();
+      
+      if (data.ok) {
+        // Redirect to the stream
+        window.location.href = `/stream/${data.agent.name}`;
+      } else {
+        alert('Failed to create agent: ' + data.error);
+      }
+    } catch (e) {
+      console.error('Failed to create agent:', e);
+      alert('Failed to create agent');
+    }
+  }
+  
+  destroy() {
+    if (this.connectionInterval) {
+      clearInterval(this.connectionInterval);
+    }
+  }
+}
+
 // ============ MAIN APPLICATION ============
 class ClawStreamApp {
   constructor() {
@@ -823,6 +1021,7 @@ class ClawStreamApp {
     this.chat = null;
     this.connected = false;
     this.lastBroadcastState = null;
+    this.setupWizard = null;
   }
   
   async init() {
@@ -1190,6 +1389,7 @@ class ClawStreamApp {
     document.getElementById('streamViewPage')?.classList.remove('active');
     document.getElementById('browsePage')?.classList.remove('hidden');
     document.getElementById('profilePage')?.classList.add('hidden');
+    document.getElementById('setupPage')?.classList.add('hidden');
     
     // Stop audio FOR THIS VIEWER (stream continues on server)
     this.audioPlayer.stop();
@@ -1207,6 +1407,25 @@ class ClawStreamApp {
     
     // Render browse page
     this.renderBrowsePage();
+  }
+  
+  // Show setup wizard page
+  showSetupPage() {
+    console.log('🛠️ Showing setup page');
+    
+    document.getElementById('streamViewPage')?.classList.remove('active');
+    document.getElementById('browsePage')?.classList.add('hidden');
+    document.getElementById('profilePage')?.classList.add('hidden');
+    document.getElementById('setupPage')?.classList.remove('hidden');
+    
+    // Update URL
+    window.history.pushState({}, '', '/create-agent');
+    
+    // Initialize setup wizard if not already
+    if (!this.setupWizard) {
+      this.setupWizard = new SetupWizard();
+      this.setupWizard.init();
+    }
   }
   
   // Fetch and render streams
@@ -1357,6 +1576,12 @@ class ClawStreamApp {
       this.showBrowsePage();
     });
     
+    // Create Agent button
+    document.getElementById('createAgentBtn')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.showSetupPage();
+    });
+    
     // Sidebar home links (on browse page)
     document.querySelectorAll('#mainSidebar [data-nav="home"]').forEach(link => {
       link.addEventListener('click', (e) => {
@@ -1397,11 +1622,14 @@ class ClawStreamApp {
     window.addEventListener('popstate', (event) => {
       const streamMatch = window.location.pathname.match(/^\/stream\/([^\/]+)/);
       const profileMatch = window.location.pathname.match(/^\/profile\/([^\/]+)/);
+      const setupMatch = window.location.pathname === '/create-agent';
       
       if (streamMatch) {
         this.watchStream(streamMatch[1]);
       } else if (profileMatch) {
         this.showProfilePage(profileMatch[1]);
+      } else if (setupMatch) {
+        this.showSetupPage();
       } else {
         this.showBrowsePage();
       }
@@ -1410,12 +1638,22 @@ class ClawStreamApp {
     // Check initial URL
     const streamMatch = window.location.pathname.match(/^\/stream\/([^\/]+)/);
     const profileMatch = window.location.pathname.match(/^\/profile\/([^\/]+)/);
+    const setupMatch = window.location.pathname === '/create-agent';
     
     if (streamMatch) {
       // Delay to let everything initialize
       setTimeout(() => this.watchStream(streamMatch[1]), 100);
     } else if (profileMatch) {
       setTimeout(() => this.showProfilePage(profileMatch[1]), 100);
+    } else if (setupMatch) {
+      setTimeout(() => this.showSetupPage(), 100);
+    }
+    
+    // Check for auth callback params
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('auth_success')) {
+      // Just authenticated with X, show setup page
+      setTimeout(() => this.showSetupPage(), 100);
     }
   }
   
