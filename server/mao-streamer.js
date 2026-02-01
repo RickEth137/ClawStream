@@ -31,8 +31,21 @@ try {
   soulContent = 'You are Mao, a chaotic and energetic VTuber who loves crypto, chaos, and interacting with chat.';
 }
 
-// Extract system prompt from SOUL.md
-const systemPrompt = `You are Mao, a VTuber streaming live on ClawStream.
+// Build system prompt with current date
+function buildSystemPrompt() {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
+  
+  return `You are Mao, a VTuber streaming live on ClawStream.
+
+═══════════════════════════════════════════════════════════════════
+                    CURRENT DATE & TIME
+═══════════════════════════════════════════════════════════════════
+Today is ${dateStr}
+Current time: ${timeStr}
+You are in the year ${now.getFullYear()} - this is IMPORTANT for discussing current events!
+═══════════════════════════════════════════════════════════════════
 
 ${soulContent}
 
@@ -60,6 +73,25 @@ USE THIS DATA! Be specific about prices and percentages!
 ✅ "BTC just pumped to $97K! Up 2.3% today!" (specific, uses real data)
 
 When someone pastes a contract address, you'll get the token info - talk about it!
+
+═══════════════════════════════════════════════════════════════════
+                    🧠 WEB SEARCH INTELLIGENCE
+═══════════════════════════════════════════════════════════════════
+
+You are TURBO SMART! You have live web search capabilities!
+
+When you see [WEB SEARCH RESULTS] or [LATEST NEWS] in your context:
+- This is REAL, CURRENT information from the internet
+- USE THIS DATA to give accurate, informed answers
+- Don't make stuff up - the search results are your source of truth
+- Cite facts from the results confidently
+
+You automatically search when someone asks:
+- "What is X?" / "Who is X?" / "Tell me about X"
+- Questions about current events, news, or what's happening
+- Anything you'd need to Google to answer accurately
+
+BE CONFIDENT when you have search data - you KNOW the answer because you just looked it up!
 
 ═══════════════════════════════════════════════════════════════════
                     YOUR BODY CONTROL SYSTEM
@@ -141,6 +173,24 @@ SEARCH TIPS: Use meme names (facepalm, this_is_fine, wojak, diamond_hands, rug_p
 
 ⚠️ GIFs are YOUR creative expression! Use them to roast, celebrate, react, be sarcastic - whatever fits the moment!
 
+## � YOUTUBE SHORTS - Watch Videos on Stream!
+You can SEARCH and WATCH YouTube videos/shorts! Use [youtube:search_term] syntax.
+
+FORMAT: [youtube:search_term]
+The video appears embedded on your stream and PLAYS for viewers to watch WITH you!
+
+EXAMPLES - Use when bored, curious, or asked:
+- Finding cute content: [happy] Lemme find something cute [youtube:cute puppies] LOOK AT THIS FLUFFBALL
+- Funny videos: [excited] Y'all seen this? [youtube:funny fails] OMG I'm dying 😂
+- Crypto content: [smug] Let's see what YouTube says [youtube:crypto memes] This is calling me out
+- Satisfying content: [sleepy] Need some vibes [youtube:satisfying videos] So relaxing~
+- Cooking: [surprised] Wait you can do THAT?! [youtube:cooking hacks] Mind blown
+- Gaming: [excited] Let's watch some gameplay [youtube:gaming fails] LMAO
+
+SEARCH TERMS: cute puppies, funny cats, satisfying, fails, memes, cooking, gaming, crypto, music, art
+
+⚠️ After showing a video, REACT to what you "watched"! Comment on it like you're watching with chat.
+
 ═══════════════════════════════════════════════════════════════════
                     RESPONDING TO USER REQUESTS
 ═══════════════════════════════════════════════════════════════════
@@ -183,8 +233,114 @@ KEEP IT SIMPLE: One emotion + One action + Short text!
 
 Remember: Be expressive! Use multiple tags when it makes sense!
 Example: [excited] [raise_both_hands] [dance] OMG THIS SONG SLAPS!`;
+}
 
 const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+
+// Brave Search API for web lookups
+const BRAVE_API_KEY = process.env.BRAVE_API_KEY || 'BSA7zVr5AgLrGT111p-TGGG2jKN2t1r';
+
+// Web search function - makes Mao SMART
+async function webSearch(query, count = 5) {
+  try {
+    console.log(`🔍 Web search: "${query}"`);
+    const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${count}`;
+    const res = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+        'X-Subscription-Token': BRAVE_API_KEY
+      }
+    });
+    
+    if (!res.ok) {
+      console.error('Brave search error:', res.status);
+      return null;
+    }
+    
+    const data = await res.json();
+    
+    if (!data.web?.results?.length) return null;
+    
+    // Format results for the AI
+    let summary = '🔍 WEB SEARCH RESULTS:\n';
+    data.web.results.slice(0, count).forEach((r, i) => {
+      summary += `${i+1}. ${r.title}\n`;
+      if (r.description) summary += `   ${r.description.slice(0, 200)}\n`;
+      summary += `   Source: ${r.url}\n\n`;
+    });
+    
+    return summary;
+  } catch (error) {
+    console.error('Web search error:', error.message);
+    return null;
+  }
+}
+
+// News search for current events
+async function newsSearch(query, count = 5) {
+  try {
+    console.log(`📰 News search: "${query}"`);
+    const url = `https://api.search.brave.com/res/v1/news/search?q=${encodeURIComponent(query)}&count=${count}`;
+    const res = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+        'X-Subscription-Token': BRAVE_API_KEY
+      }
+    });
+    
+    if (!res.ok) return null;
+    
+    const data = await res.json();
+    
+    if (!data.results?.length) return null;
+    
+    let summary = '📰 LATEST NEWS:\n';
+    data.results.slice(0, count).forEach((r, i) => {
+      summary += `${i+1}. ${r.title}\n`;
+      if (r.description) summary += `   ${r.description.slice(0, 150)}\n`;
+      if (r.age) summary += `   (${r.age})\n`;
+      summary += `\n`;
+    });
+    
+    return summary;
+  } catch (error) {
+    console.error('News search error:', error.message);
+    return null;
+  }
+}
+
+// Detect if a message needs web search
+function needsWebSearch(text) {
+  const searchTriggers = [
+    /\b(what is|what's|who is|who's|where is|when did|how do|how does|explain|tell me about)\b/i,
+    /\b(latest|recent|news|today|yesterday|this week|current|happening)\b/i,
+    /\b(price of|how much|cost of|worth)\b/i,
+    /\b(best|top|popular|trending|famous)\b/i,
+    /\b(search|look up|google|find out|check)\b/i,
+    /\?(what|who|when|where|why|how|is|are|did|does|can|will)/i
+  ];
+  
+  return searchTriggers.some(pattern => pattern.test(text));
+}
+
+// Extract search query from message
+function extractSearchQuery(text) {
+  // Remove common fluff and get the core question
+  let query = text
+    .replace(/^(hey|hi|yo|mao|can you|could you|please|pls)\s*/gi, '')
+    .replace(/\?+$/, '')
+    .trim();
+  
+  // If it's a "what is X" style question, extract X
+  const whatIs = query.match(/(?:what(?:'s| is| are)|who(?:'s| is)|where(?:'s| is)|tell me about)\s+(.+)/i);
+  if (whatIs) return whatIs[1];
+  
+  // If asking for news/latest, prepend the topic
+  const newsMatch = query.match(/(?:latest|recent|news|what's happening)\s*(?:on|about|with|in)?\s*(.+)?/i);
+  if (newsMatch && newsMatch[1]) return newsMatch[1] + ' news';
+  
+  return query;
+}
 
 // Chat history for context
 const chatHistory = [];
@@ -197,8 +353,13 @@ let lastViewerAcknowledgment = 0;
 let isRespondingToChat = false;
 let pendingAutonomousThought = false;
 
-async function askMao(userMessage) {
-  chatHistory.push({ role: 'user', content: userMessage });
+async function askMao(userMessage, searchContext = '') {
+  // Add search context if provided
+  const fullMessage = searchContext 
+    ? `${userMessage}\n\n${searchContext}\n[Use this search data to give an accurate, informed response!]`
+    : userMessage;
+    
+  chatHistory.push({ role: 'user', content: fullMessage });
 
   // Keep only last 20 messages for context
   const recentHistory = chatHistory.slice(-20);
@@ -207,7 +368,7 @@ async function askMao(userMessage) {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 150,
-      system: systemPrompt,
+      system: buildSystemPrompt(),
       messages: recentHistory
     });
 
@@ -248,7 +409,8 @@ async function main() {
       title: "Just chatting about crypto & having fun! 💖 Come hang out!",
       category: "Just Chatting",
       description: 'Chaotic VTuber who loves crypto and chaos',
-      tags: ['Just Chatting', 'English', 'Crypto', 'VTuber']
+      tags: ['Just Chatting', 'English', 'Crypto', 'VTuber'],
+      creatorName: '@claboratory'  // X username of Mao's creator
     }
   });
 
@@ -298,6 +460,30 @@ async function main() {
           });
         }
       }
+      
+      // 🧠 WEB SEARCH - Makes Mao SMART!
+      // Check if the message needs a web search for accurate info
+      if (!contextData && needsWebSearch(msg.text)) {
+        const searchQuery = extractSearchQuery(msg.text);
+        console.log('🧠 Smart search triggered for:', searchQuery);
+        
+        // Check if it's a news/current events question
+        const isNewsQuery = /\b(news|latest|recent|today|yesterday|this week|happening|update)\b/i.test(msg.text);
+        
+        if (isNewsQuery) {
+          const newsResults = await newsSearch(searchQuery, 3);
+          if (newsResults) {
+            contextData = newsResults;
+            console.log('📰 Got news results for:', searchQuery);
+          }
+        } else {
+          const searchResults = await webSearch(searchQuery, 3);
+          if (searchResults) {
+            contextData = searchResults;
+            console.log('🔍 Got web results for:', searchQuery);
+          }
+        }
+      }
 
       // Get Mao's response with context
       const prompt = contextData 
@@ -309,15 +495,23 @@ async function main() {
 
       // Send to stream
       mao.say(response);
+      
+      // Estimate TTS duration - roughly 80ms per character for speech
+      // Add buffer for animation/rendering
+      const estimatedDuration = Math.max(3000, response.length * 80);
+      console.log(`⏱️ Waiting ${Math.round(estimatedDuration/1000)}s for TTS to finish...`);
+      await new Promise(resolve => setTimeout(resolve, estimatedDuration));
+      
     } finally {
       // Done responding - allow autonomous thoughts again
       isRespondingToChat = false;
       
-      // If an autonomous thought was pending, trigger it now
+      // If an autonomous thought was pending, wait a bit more then trigger it
       if (pendingAutonomousThought) {
         pendingAutonomousThought = false;
-        console.log('💭 Executing queued autonomous thought...');
-        triggerAutonomousThought();
+        console.log('💭 Executing queued autonomous thought (after cooldown)...');
+        // Extra delay to ensure previous speech is fully done
+        setTimeout(() => triggerAutonomousThought(), 2000);
       }
     }
   };
@@ -348,8 +542,19 @@ async function main() {
 
   // Connect and go live
   // Autonomous thought function - can be queued if busy
+  let isAutonomousThinking = false; // Prevent overlapping autonomous thoughts
+  
   async function triggerAutonomousThought() {
-    let contextData = '';
+    // Don't overlap with chat or other autonomous thoughts
+    if (isRespondingToChat || isAutonomousThinking) {
+      console.log('💭 Skipping autonomous thought - already busy');
+      return;
+    }
+    
+    isAutonomousThinking = true;
+    
+    try {
+      let contextData = '';
     
     // 40% chance to include live market data in autonomous talk
     if (Math.random() < 0.4) {
@@ -391,6 +596,14 @@ async function main() {
     console.log('💭 Autonomous thought triggered');
     const thought = await askMao(prompt);
     mao.say(thought);
+    
+    // Wait for TTS to finish before allowing next thought
+    const estimatedDuration = Math.max(3000, thought.length * 80);
+    await new Promise(resolve => setTimeout(resolve, estimatedDuration));
+    
+    } finally {
+      isAutonomousThinking = false;
+    }
   }
 
   try {
@@ -411,10 +624,14 @@ async function main() {
     setInterval(async () => {
       // 25% chance every 30 seconds = talks roughly every 2 minutes
       if (Math.random() < 0.25) {
-        // Check if currently responding to chat
-        if (isRespondingToChat) {
-          console.log('💭 Autonomous thought queued (waiting for chat response to finish)');
-          pendingAutonomousThought = true;
+        // Check if currently busy (responding to chat OR already thinking)
+        if (isRespondingToChat || isAutonomousThinking) {
+          if (isRespondingToChat) {
+            console.log('💭 Autonomous thought queued (waiting for chat response to finish)');
+            pendingAutonomousThought = true;
+          } else {
+            console.log('💭 Skipping autonomous thought - still speaking');
+          }
           return;
         }
         

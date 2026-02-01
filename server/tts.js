@@ -143,7 +143,7 @@ function convertNumbersToWords(text) {
 
 /**
  * Strip avatar control tags from text for TTS
- * Removes things like [happy], [wave], [raise_left_hand], [gif:...], etc.
+ * Removes things like [happy], [wave], [raise_left_hand], [gif:...], [youtube:...], etc.
  */
 function stripTagsForTTS(text) {
   // Remove all [tag] patterns - emotions, actions, effects, etc.
@@ -160,6 +160,8 @@ function stripTagsForTTS(text) {
     .replace(/\[(hearts|magic|explosion|aura)\]/gi, '')
     // GIF tags [gif:search] or [gif:search:position] or [gif:search:position:duration]
     .replace(/\[gif:[^\]]+\]/gi, '')
+    // YouTube tags [youtube:search term]
+    .replace(/\[youtube:[^\]]+\]/gi, '')
     // Catch any remaining [tags] we might have missed
     .replace(/\[[a-z_]+\]/gi, '')
     .replace(/\s+/g, ' ')  // Collapse multiple spaces

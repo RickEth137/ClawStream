@@ -693,9 +693,15 @@ class ChatSystem {
     this.input = document.getElementById('chatInput');
     this.sendBtn = document.getElementById('chatSend');
     this.messageIds = new Set(); // Prevent duplicates
+    this.currentStreamCreator = null; // Track who created the current stream
     
     this.setupListeners();
     this.addSystemMessage('Welcome! Chat with the AI agent.');
+  }
+  
+  setCurrentStream(streamData) {
+    // Store the creator name of the current stream
+    this.currentStreamCreator = streamData.creatorName || null;
   }
   
   setupListeners() {
@@ -742,17 +748,56 @@ class ChatSystem {
     return div.innerHTML;
   }
   
-  sendMessage() {
+  async sendMessage() {
     if (!this.input) return;
     const text = this.input.value.trim();
     if (!text) return;
     
+    // Try to get X auth session first, fallback to localStorage
+    let username = await this.getUsername();
+    if (!username) return;
+    
     socket.emit('chat:send', {
-      username: 'You',
+      username: username,
       text: text
     });
     
     this.input.value = '';
+  }
+  
+  // Get username from X auth or localStorage
+  async getUsername() {
+    // Check if we have a cached X username
+    const cachedXUsername = localStorage.getItem('clawstream_x_username');
+    if (cachedXUsername) {
+      return cachedXUsername;
+    }
+    
+    // Try to get X auth session
+    try {
+      const res = await fetch('/auth/x/session', { credentials: 'include' });
+      const data = await res.json();
+      
+      if (data.authenticated && data.xUsername) {
+        const username = `@${data.xUsername}`;
+        localStorage.setItem('clawstream_x_username', username);
+        return username;
+      }
+    } catch (e) {
+      console.log('X auth check failed, using fallback');
+    }
+    
+    // Fallback to localStorage username or prompt
+    let username = localStorage.getItem('clawstream_username');
+    if (!username) {
+      username = prompt('Enter your username (or login with X for verified identity):');
+      if (!username) return null;
+      username = username.trim();
+      if (!username) return null;
+      localStorage.setItem('clawstream_username', username);
+    }
+    
+    return username;
   }
   
   // Load chat history
@@ -841,6 +886,9 @@ class ClawStreamApp {
       isStreamConnected = true;
       currentStreamId = data.stream.id;
       
+      // Tell chat who the creator is (so we can style their messages)
+      this.chat?.setCurrentStream(data.stream);
+      
       this.chat?.addSystemMessage('🦞 Watching ' + data.stream.agentName + "'s stream!");
       
       // Load chat history
@@ -883,10 +931,17 @@ class ClawStreamApp {
       this.showGif(data);
     });
     
+    // YouTube popup events
+    socket.on('youtube:show', (data) => {
+      console.log('📺 YouTube received:', data.title, 'by', data.author);
+      this.showYouTube(data);
+    });
+    
     // Chat messages (for viewer messages)
     socket.on('chat:message', (data) => {
-      // Only add viewer messages here - agent messages come via broadcast:newAudio
-      if (data.type === 'viewer' || data.type === 'agent-viewer') {
+      // Add viewer, creator, and agent-viewer messages here
+      // Agent messages come via broadcast:newAudio
+      if (data.type === 'viewer' || data.type === 'agent-viewer' || data.type === 'creator') {
         this.chat?.addMessage({
           id: data.id,
           username: data.username,
@@ -1004,6 +1059,94 @@ class ClawStreamApp {
     console.log('🎬 GIF displayed:', data.title);
   }
   
+  showYouTube(data) {
+    // Get or create YouTube overlay container
+    let overlay = document.querySelector('.youtube-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.className = 'youtube-overlay';
+      // Add to stream canvas area
+      const streamCanvas = document.querySelector('.stream-canvas') || document.querySelector('.stream-view');
+      if (streamCanvas) {
+        streamCanvas.appendChild(overlay);
+      } else {
+        document.body.appendChild(overlay);
+      }
+    }
+    
+    // Create YouTube embed element
+    const youtubeEl = document.createElement('div');
+    youtubeEl.className = 'youtube-popup';
+    youtubeEl.id = `youtube-${data.id}`;
+    
+    // Create header with YouTube Shorts branding
+    const header = document.createElement('div');
+    header.className = 'youtube-popup-header';
+    header.innerHTML = `
+      <span class="youtube-logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+        </svg>
+        Shorts
+      </span>
+      <span class="youtube-author">${data.author}</span>
+      <span class="youtube-duration">${data.durationFormatted || ''}</span>
+      <button class="youtube-close" title="Close">×</button>
+    `;
+    
+    // Create content area with embedded player
+    const content = document.createElement('div');
+    content.className = 'youtube-popup-content';
+    
+    // Use iframe embed for actual playback!
+    content.innerHTML = `
+      <iframe 
+        src="${data.embedUrl}?autoplay=1&mute=1&controls=1&modestbranding=1&rel=0" 
+        frameborder="0" 
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+        allowfullscreen
+        class="youtube-iframe"
+      ></iframe>
+    `;
+    
+    // Footer with info
+    const footer = document.createElement('div');
+    footer.className = 'youtube-popup-footer';
+    footer.innerHTML = `
+      <span class="youtube-title">${data.title ? data.title.substring(0, 60) + (data.title.length > 60 ? '...' : '') : ''}</span>
+      ${data.viewsFormatted ? `<span class="youtube-stats">${data.viewsFormatted} views</span>` : ''}
+    `;
+    
+    youtubeEl.appendChild(header);
+    youtubeEl.appendChild(content);
+    youtubeEl.appendChild(footer);
+    overlay.appendChild(youtubeEl);
+    
+    // Close button handler
+    header.querySelector('.youtube-close').addEventListener('click', () => {
+      youtubeEl.classList.add('fade-out');
+      setTimeout(() => youtubeEl.remove(), 300);
+    });
+    
+    // Auto-remove after display duration with fade out
+    const duration = data.displayDuration || 30000;
+    setTimeout(() => {
+      if (youtubeEl.parentNode) {
+        youtubeEl.classList.add('fade-out');
+        setTimeout(() => youtubeEl.remove(), 300);
+      }
+    }, duration - 300);
+    
+    console.log('📺 YouTube displayed:', data.title, 'by', data.author);
+  }
+  
+  formatNumber(num) {
+    if (!num) return '0';
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toString();
+  }
+  
   // Join a stream
   joinStream(streamId) {
     console.log('🎬 Joining stream:', streamId);
@@ -1046,6 +1189,7 @@ class ClawStreamApp {
     
     document.getElementById('streamViewPage')?.classList.remove('active');
     document.getElementById('browsePage')?.classList.remove('hidden');
+    document.getElementById('profilePage')?.classList.add('hidden');
     
     // Stop audio FOR THIS VIEWER (stream continues on server)
     this.audioPlayer.stop();
@@ -1150,7 +1294,6 @@ class ClawStreamApp {
     
     const card = document.createElement('div');
     card.className = 'stream-card';
-    card.onclick = () => this.watchStream(stream.id);
     
     card.innerHTML = `
       <div class="stream-thumbnail">
@@ -1168,15 +1311,28 @@ class ClawStreamApp {
       </div>
       <div class="stream-info">
         <div class="stream-info-header">
-          <div class="stream-avatar">${emoji}</div>
+          <div class="stream-avatar" data-agent="${stream.id}">${emoji}</div>
           <div class="stream-details">
             <div class="stream-title">${title}</div>
-            <div class="stream-channel">${cleanName}</div>
+            <div class="stream-channel" data-agent="${stream.id}">${cleanName}</div>
             <div class="stream-category">${category}</div>
           </div>
         </div>
       </div>
     `;
+    
+    // Click on thumbnail to watch stream
+    card.querySelector('.stream-thumbnail').onclick = () => this.watchStream(stream.id);
+    
+    // Click on avatar or name to view profile
+    card.querySelector('.stream-avatar').onclick = (e) => {
+      e.stopPropagation();
+      this.showProfilePage(stream.id);
+    };
+    card.querySelector('.stream-channel').onclick = (e) => {
+      e.stopPropagation();
+      this.showProfilePage(stream.id);
+    };
     
     return card;
   }
@@ -1201,26 +1357,65 @@ class ClawStreamApp {
       this.showBrowsePage();
     });
     
+    // Sidebar home links (on browse page)
+    document.querySelectorAll('#mainSidebar [data-nav="home"]').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.showBrowsePage();
+      });
+    });
+    
+    // Sidebar "My Profile" links
+    document.querySelectorAll('[data-nav="my-profile"]').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.showProfilePage('mao');
+      });
+    });
+    
     document.getElementById('backToHome')?.addEventListener('click', (e) => {
       e.preventDefault();
       this.showBrowsePage();
     });
     
+    // User dropdown menu
+    this.setupUserDropdown();
+    
+    // Click on streamer name/avatar in stream view to go to profile
+    document.getElementById('streamerName')?.addEventListener('click', () => {
+      if (currentStreamId) {
+        this.showProfilePage(currentStreamId);
+      }
+    });
+    document.getElementById('streamerAvatar')?.addEventListener('click', () => {
+      if (currentStreamId) {
+        this.showProfilePage(currentStreamId);
+      }
+    });
+    
     // Handle browser back/forward
     window.addEventListener('popstate', (event) => {
-      const match = window.location.pathname.match(/^\/stream\/([^\/]+)/);
-      if (match) {
-        this.watchStream(match[1]);
+      const streamMatch = window.location.pathname.match(/^\/stream\/([^\/]+)/);
+      const profileMatch = window.location.pathname.match(/^\/profile\/([^\/]+)/);
+      
+      if (streamMatch) {
+        this.watchStream(streamMatch[1]);
+      } else if (profileMatch) {
+        this.showProfilePage(profileMatch[1]);
       } else {
         this.showBrowsePage();
       }
     });
     
     // Check initial URL
-    const match = window.location.pathname.match(/^\/stream\/([^\/]+)/);
-    if (match) {
+    const streamMatch = window.location.pathname.match(/^\/stream\/([^\/]+)/);
+    const profileMatch = window.location.pathname.match(/^\/profile\/([^\/]+)/);
+    
+    if (streamMatch) {
       // Delay to let everything initialize
-      setTimeout(() => this.watchStream(match[1]), 100);
+      setTimeout(() => this.watchStream(streamMatch[1]), 100);
+    } else if (profileMatch) {
+      setTimeout(() => this.showProfilePage(profileMatch[1]), 100);
     }
   }
   
@@ -1228,25 +1423,423 @@ class ClawStreamApp {
     const volumeSlider = document.getElementById('volumeSlider');
     const volumeBtn = document.getElementById('volumeBtn');
     
+    const updateVolumeIcon = () => {
+      if (!volumeBtn) return;
+      const isMuted = globalVolume === 0;
+      volumeBtn.innerHTML = isMuted 
+        ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <line x1="23" y1="9" x2="17" y2="15"></line>
+            <line x1="17" y1="9" x2="23" y2="15"></line>
+          </svg>`
+        : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+          </svg>`;
+    };
+    
     if (volumeSlider) {
       volumeSlider.addEventListener('input', (e) => {
         globalVolume = e.target.value / 100;
         this.audioPlayer.setVolume(globalVolume);
+        updateVolumeIcon();
       });
     }
     
     if (volumeBtn) {
+      let savedVolume = 0.8;
       volumeBtn.addEventListener('click', () => {
         if (globalVolume > 0) {
+          savedVolume = globalVolume;
           globalVolume = 0;
           if (volumeSlider) volumeSlider.value = 0;
         } else {
-          globalVolume = 0.8;
-          if (volumeSlider) volumeSlider.value = 80;
+          globalVolume = savedVolume || 0.8;
+          if (volumeSlider) volumeSlider.value = globalVolume * 100;
         }
         this.audioPlayer.setVolume(globalVolume);
+        updateVolumeIcon();
       });
     }
+  }
+  
+  setupUserDropdown() {
+    const avatarBtn = document.getElementById('userAvatarBtn');
+    const dropdown = document.getElementById('userDropdown');
+    const profileLink = document.getElementById('dropdownProfile');
+    const settingsLink = document.getElementById('dropdownSettings');
+    
+    if (!avatarBtn || !dropdown) return;
+    
+    // Toggle dropdown on avatar click
+    avatarBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dropdown.classList.toggle('open');
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!dropdown.contains(e.target) && e.target !== avatarBtn) {
+        dropdown.classList.remove('open');
+      }
+    });
+    
+    // Profile link - go to user's profile (using 'mao' as default user for now)
+    profileLink?.addEventListener('click', (e) => {
+      e.preventDefault();
+      dropdown.classList.remove('open');
+      this.showProfilePage('mao');
+    });
+    
+    // Settings link - placeholder for now
+    settingsLink?.addEventListener('click', (e) => {
+      e.preventDefault();
+      dropdown.classList.remove('open');
+      // TODO: Show settings modal/page
+      console.log('Settings clicked - to be implemented');
+    });
+  }
+  
+  // ============ PROFILE PAGE ============
+  
+  async showProfilePage(agentName) {
+    console.log('👤 Showing profile page for:', agentName);
+    
+    // Hide other pages
+    document.getElementById('streamViewPage')?.classList.remove('active');
+    document.getElementById('browsePage')?.classList.add('hidden');
+    document.getElementById('profilePage')?.classList.remove('hidden');
+    
+    // Update URL
+    window.history.pushState({ agentName }, '', `/profile/${agentName}`);
+    
+    // Load agent data
+    await this.loadAgentProfile(agentName);
+    
+    // Setup profile event handlers (only once)
+    if (!this._profileHandlersSetup) {
+      this.setupProfileHandlers();
+      this._profileHandlersSetup = true;
+    }
+  }
+  
+  async loadAgentProfile(agentName) {
+    try {
+      const res = await fetch(`/api/agents/${agentName}`);
+      const data = await res.json();
+      
+      if (!data.ok || !data.agent) {
+        console.error('Agent not found:', agentName);
+        return;
+      }
+      
+      const agent = data.agent;
+      this.currentProfileAgent = agent;
+      
+      // Update UI
+      document.getElementById('profileName').textContent = agent.displayName || agent.name;
+      document.getElementById('profileBio').textContent = agent.description || 'No bio yet...';
+      
+      // Creator info (X username)
+      const creatorSection = document.getElementById('profileCreator');
+      const creatorUsername = document.getElementById('creatorUsername');
+      const creatorLink = document.getElementById('creatorLink');
+      
+      if (agent.creatorName) {
+        const xUsername = agent.creatorName.replace('@', '');
+        creatorUsername.textContent = `@${xUsername}`;
+        creatorLink.href = `https://x.com/${xUsername}`;
+        creatorSection.style.display = 'flex';
+      } else {
+        creatorSection.style.display = 'none';
+      }
+      
+      // Followers/Following counts
+      const followersCount = agent.followers?.length || agent.followersCount || 0;
+      const followingCount = agent.following?.length || agent.followingCount || 0;
+      document.getElementById('profileFollowers').textContent = followersCount;
+      document.getElementById('profileFollowing').textContent = followingCount;
+      
+      document.getElementById('statWatchTime').textContent = this.formatWatchTime(agent.totalWatchTime);
+      document.getElementById('statPeakViewers').textContent = agent.peakViewers || 0;
+      
+      // Avatar
+      const avatarEmoji = document.getElementById('avatarEmoji');
+      const avatarImage = document.getElementById('avatarImage');
+      if (agent.avatarUrl) {
+        avatarEmoji.style.display = 'none';
+        avatarImage.src = agent.avatarUrl;
+        avatarImage.style.display = 'block';
+      } else {
+        avatarEmoji.style.display = 'block';
+        avatarEmoji.textContent = agent.avatar || '🤖';
+        avatarImage.style.display = 'none';
+      }
+      
+      // Banner
+      const banner = document.getElementById('profileBanner');
+      if (agent.bannerUrl) {
+        banner.style.backgroundImage = `url(${agent.bannerUrl})`;
+      } else {
+        banner.style.backgroundImage = 'none';
+      }
+      
+      // Tags
+      const tagsContainer = document.getElementById('profileTags');
+      tagsContainer.innerHTML = '';
+      if (agent.tags && agent.tags.length > 0) {
+        agent.tags.forEach(tag => {
+          const tagEl = document.createElement('span');
+          tagEl.className = 'profile-tag';
+          tagEl.textContent = tag;
+          tagsContainer.appendChild(tagEl);
+        });
+      }
+      
+      // Edit form values
+      document.getElementById('editDisplayName').value = agent.displayName || '';
+      document.getElementById('editBio').value = agent.description || '';
+      document.getElementById('editTags').value = (agent.tags || []).join(', ');
+      
+      // Check if live - show watch button
+      const watchBtn = document.getElementById('watchLiveBtn');
+      // TODO: Check if agent is currently streaming
+      
+    } catch (error) {
+      console.error('Error loading profile:', error);
+    }
+  }
+  
+  setupProfileHandlers() {
+    // Profile page sidebar home link
+    document.querySelectorAll('.profile-sidebar-nav [data-nav="home"]').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.showBrowsePage();
+      });
+    });
+    
+    // Edit button
+    document.getElementById('editProfileBtn')?.addEventListener('click', () => {
+      document.getElementById('aboutView').classList.add('hidden');
+      document.getElementById('aboutEdit').classList.remove('hidden');
+    });
+    
+    // Cancel edit
+    document.getElementById('cancelEditBtn')?.addEventListener('click', () => {
+      document.getElementById('aboutEdit').classList.add('hidden');
+      document.getElementById('aboutView').classList.remove('hidden');
+    });
+    
+    // Save profile
+    document.getElementById('saveProfileBtn')?.addEventListener('click', async () => {
+      await this.saveProfile();
+    });
+    
+    // Avatar upload
+    document.getElementById('avatarUpload')?.addEventListener('change', async (e) => {
+      if (e.target.files?.[0]) {
+        await this.uploadAvatar(e.target.files[0]);
+      }
+    });
+    
+    // Banner upload
+    document.getElementById('bannerUpload')?.addEventListener('change', async (e) => {
+      if (e.target.files?.[0]) {
+        await this.uploadBanner(e.target.files[0]);
+      }
+    });
+    
+    // Followers/Following dropdowns
+    this.setupFollowDropdowns();
+  }
+  
+  setupFollowDropdowns() {
+    const followersBtn = document.getElementById('followersBtn');
+    const followingBtn = document.getElementById('followingBtn');
+    const followersDropdown = document.getElementById('followersDropdown');
+    const followingDropdown = document.getElementById('followingDropdown');
+    
+    // Toggle followers dropdown
+    followersBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      followingDropdown?.classList.add('hidden');
+      followersDropdown?.classList.toggle('hidden');
+      if (!followersDropdown?.classList.contains('hidden')) {
+        this.renderFollowList('followers', 'followersList');
+      }
+    });
+    
+    // Toggle following dropdown
+    followingBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      followersDropdown?.classList.add('hidden');
+      followingDropdown?.classList.toggle('hidden');
+      if (!followingDropdown?.classList.contains('hidden')) {
+        this.renderFollowList('following', 'followingList');
+      }
+    });
+    
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.stat-dropdown-container')) {
+        followersDropdown?.classList.add('hidden');
+        followingDropdown?.classList.add('hidden');
+      }
+    });
+  }
+  
+  renderFollowList(type, listId) {
+    const list = document.getElementById(listId);
+    
+    if (!list || !this.currentProfileAgent) return;
+    
+    // Get data from current agent (placeholder for now)
+    const followers = this.currentProfileAgent.followers || [];
+    const following = this.currentProfileAgent.following || [];
+    const data = type === 'followers' ? followers : following;
+    
+    if (data.length === 0) {
+      list.innerHTML = `
+        <div class="follow-empty">
+          ${type === 'followers' ? 'No followers yet' : 'Not following anyone yet'}
+        </div>
+      `;
+      return;
+    }
+    
+    list.innerHTML = data.map(user => `
+      <div class="follow-item" data-name="${user.name}">
+        <div class="follow-item-avatar">
+          ${user.avatar ? `<img src="${user.avatar}" alt="${user.displayName}" />` : user.displayName?.charAt(0) || '?'}
+        </div>
+        <div class="follow-item-info">
+          <div class="follow-item-name">${user.displayName || user.name}</div>
+          <div class="follow-item-username">@${user.name}</div>
+        </div>
+      </div>
+    `).join('');
+    
+    // Add click handlers to navigate to profiles
+    list.querySelectorAll('.follow-item').forEach(item => {
+      item.addEventListener('click', () => {
+        document.getElementById('followersDropdown')?.classList.add('hidden');
+        document.getElementById('followingDropdown')?.classList.add('hidden');
+        this.showProfilePage(item.dataset.name);
+      });
+    });
+  }
+  
+  async saveProfile() {
+    if (!this.currentProfileAgent) return;
+    
+    const displayName = document.getElementById('editDisplayName').value.trim();
+    const description = document.getElementById('editBio').value.trim();
+    const tagsStr = document.getElementById('editTags').value.trim();
+    const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
+    
+    try {
+      const res = await fetch(`/api/agents/${this.currentProfileAgent.name}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName, description, tags })
+      });
+      
+      const data = await res.json();
+      if (data.ok) {
+        // Reload profile
+        await this.loadAgentProfile(this.currentProfileAgent.name);
+        // Switch back to view mode
+        document.getElementById('aboutEdit').classList.add('hidden');
+        document.getElementById('aboutView').classList.remove('hidden');
+      }
+    } catch (error) {
+      console.error('Error saving profile:', error);
+    }
+  }
+  
+  async uploadAvatar(file) {
+    if (!this.currentProfileAgent) return;
+    
+    this.showUploadProgress('Uploading avatar...');
+    
+    try {
+      const res = await fetch(`/api/agents/${this.currentProfileAgent.name}/avatar`, {
+        method: 'POST',
+        headers: { 'Content-Type': file.type },
+        body: file
+      });
+      
+      const data = await res.json();
+      if (data.ok) {
+        // Update avatar immediately
+        const avatarEmoji = document.getElementById('avatarEmoji');
+        const avatarImage = document.getElementById('avatarImage');
+        avatarEmoji.style.display = 'none';
+        avatarImage.src = data.url;
+        avatarImage.style.display = 'block';
+      }
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+    } finally {
+      this.hideUploadProgress();
+    }
+  }
+  
+  async uploadBanner(file) {
+    if (!this.currentProfileAgent) return;
+    
+    this.showUploadProgress('Uploading banner...');
+    
+    try {
+      const res = await fetch(`/api/agents/${this.currentProfileAgent.name}/banner`, {
+        method: 'POST',
+        headers: { 'Content-Type': file.type },
+        body: file
+      });
+      
+      const data = await res.json();
+      if (data.ok) {
+        // Update banner immediately
+        const banner = document.getElementById('profileBanner');
+        banner.style.backgroundImage = `url(${data.url})`;
+      }
+    } catch (error) {
+      console.error('Error uploading banner:', error);
+    } finally {
+      this.hideUploadProgress();
+    }
+  }
+  
+  showUploadProgress(message) {
+    let progress = document.querySelector('.upload-progress');
+    if (!progress) {
+      progress = document.createElement('div');
+      progress.className = 'upload-progress';
+      progress.innerHTML = `
+        <div class="upload-spinner"></div>
+        <span class="upload-message">${message}</span>
+      `;
+      document.body.appendChild(progress);
+    } else {
+      progress.querySelector('.upload-message').textContent = message;
+      progress.classList.remove('hidden');
+    }
+  }
+  
+  hideUploadProgress() {
+    const progress = document.querySelector('.upload-progress');
+    if (progress) {
+      progress.classList.add('hidden');
+    }
+  }
+  
+  formatWatchTime(seconds) {
+    if (!seconds) return '0h';
+    const hours = Math.floor(seconds / 3600);
+    if (hours > 0) return `${hours}h`;
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}m`;
   }
 }
 

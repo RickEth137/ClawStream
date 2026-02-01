@@ -135,9 +135,17 @@ export async function getTokenByContract(contractAddress) {
     // Get the most liquid pair
     const bestPair = data.pairs.sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0))[0];
     
+    // Handle lazy devs who don't name their tokens (looking at you, rugpullers)
+    const tokenName = bestPair.baseToken?.name && bestPair.baseToken.name !== 'undefined' 
+      ? bestPair.baseToken.name 
+      : (bestPair.baseToken?.symbol || `Mystery Token ${bestPair.baseToken?.address?.slice(-6) || '???'}`);
+    const tokenSymbol = bestPair.baseToken?.symbol && bestPair.baseToken.symbol !== 'undefined'
+      ? bestPair.baseToken.symbol
+      : `???`;
+    
     return {
-      name: bestPair.baseToken?.name || 'Unknown',
-      symbol: bestPair.baseToken?.symbol || '???',
+      name: tokenName,
+      symbol: tokenSymbol,
       address: bestPair.baseToken?.address,
       price: bestPair.priceUsd,
       priceChange24h: bestPair.priceChange?.h24,
@@ -184,9 +192,16 @@ export async function searchToken(query) {
       const key = pair.baseToken?.address;
       if (key && !seen.has(key)) {
         seen.add(key);
+        // Handle lazy devs who don't name their tokens
+        const name = (pair.baseToken?.name && pair.baseToken.name !== 'undefined') 
+          ? pair.baseToken.name 
+          : (pair.baseToken?.symbol || `Token ...${key.slice(-6)}`);
+        const symbol = (pair.baseToken?.symbol && pair.baseToken.symbol !== 'undefined')
+          ? pair.baseToken.symbol 
+          : '???';
         tokens.push({
-          name: pair.baseToken?.name,
-          symbol: pair.baseToken?.symbol,
+          name: name,
+          symbol: symbol,
           address: pair.baseToken?.address,
           price: pair.priceUsd,
           priceChange24h: pair.priceChange?.h24,
@@ -232,9 +247,14 @@ export async function getTrendingTokens() {
     for (const token of (data || []).slice(0, 20)) {
       if (token.tokenAddress && !seen.has(token.tokenAddress)) {
         seen.add(token.tokenAddress);
+        // Handle unnamed tokens (common with scams/lazy devs)
+        const name = (token.name && token.name !== 'undefined') ? token.name : 
+                     (token.symbol && token.symbol !== 'undefined') ? token.symbol : 
+                     `Unnamed Token ...${token.tokenAddress.slice(-6)}`;
+        const symbol = (token.symbol && token.symbol !== 'undefined') ? token.symbol : '???';
         tokens.push({
-          name: token.name || token.symbol,
-          symbol: token.symbol,
+          name: name,
+          symbol: symbol,
           address: token.tokenAddress,
           chain: token.chainId,
           url: token.url,
@@ -372,6 +392,11 @@ export async function getTokenSummary(contractAddress) {
   summary += `Liquidity: ${formatMarketCap(token.liquidity)}\n`;
   summary += `Chain: ${token.chain}\n`;
   summary += `DEX: ${token.dexId}\n`;
+  
+  // Warn about sketchy tokens with no name
+  if (token.symbol === '???' || token.name.includes('Mystery Token') || token.name.includes('Unnamed Token')) {
+    summary += `⚠️ WARNING: This token has no name set - devs were too lazy to even name it! Classic rugpull vibes.\n`;
+  }
   
   if (token.info?.description) {
     summary += `Description: ${token.info.description.slice(0, 100)}...\n`;

@@ -1,0 +1,93 @@
+// prisma/schema.prisma
+// ClawStream Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Agent Profile - The AI streamers
+model Agent {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  displayName String
+  creatorName String?  // The human who created/owns this agent
+  avatar      String?  // Emoji or URL to avatar image
+  avatarCid   String?  // IPFS CID for profile picture
+  bannerCid   String?  // IPFS CID for banner image
+  modelPath   String?  // Path to Live2D model
+  description String?
+  personality String?  @db.Text // AI personality/system prompt
+  voiceId     String?  // ElevenLabs voice ID
+  
+  // Streaming stats
+  totalStreams    Int      @default(0)
+  totalWatchTime  Int      @default(0) // in seconds
+  peakViewers     Int      @default(0)
+  
+  // Social
+  followers       Int      @default(0)
+  
+  // Settings
+  isActive        Boolean  @default(true)
+  tags            String[] @default([])
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lastStreamAt    DateTime?
+  
+  // Relations
+  streams         Stream[]
+  chatMessages    ChatMessage[]
+}
+
+// Stream session history
+model Stream {
+  id          String   @id @default(cuid())
+  agentId     String
+  agent       Agent    @relation(fields: [agentId], references: [id])
+  
+  title       String?
+  startedAt   DateTime @default(now())
+  endedAt     DateTime?
+  
+  // Stats
+  peakViewers Int      @default(0)
+  totalViews  Int      @default(0)
+  
+  // Relations
+  chatMessages ChatMessage[]
+}
+
+// Chat messages for history/context
+model ChatMessage {
+  id        String   @id @default(cuid())
+  streamId  String?
+  stream    Stream?  @relation(fields: [streamId], references: [id])
+  agentId   String?
+  agent     Agent?   @relation(fields: [agentId], references: [id])
+  
+  type      String   // 'agent', 'viewer', 'creator', 'system'
+  username  String
+  content   String   @db.Text
+  
+  createdAt DateTime @default(now())
+}
+
+// Viewer profiles (optional - for future features)
+model Viewer {
+  id          String   @id @default(cuid())
+  username    String   @unique
+  displayName String?
+  
+  // Stats
+  totalWatchTime Int   @default(0)
+  messageCount   Int   @default(0)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

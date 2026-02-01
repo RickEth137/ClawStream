@@ -4,21 +4,30 @@ import { Server } from 'socket.io';
 import { randomUUID } from 'crypto';
 import crypto from 'crypto';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { generateSpeech, TEMP_DIR as TTS_TEMP_DIR } from './tts.js';
 import giphy from './giphy.js';
+import * as youtube from './youtube.js';
+import prisma, { getAgent, getAllAgents, updateAgent } from './db.js';
+import { uploadProfilePicture, uploadBanner, getGatewayUrl } from './storage.js';
+import { setupXAuth, isCreatorOfAgent } from './x-auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(express.json());
+app.use(cookieParser());
 app.use(cors({ 
   origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174'], 
   methods: ['GET', 'POST'], 
   credentials: true 
 }));
+
+// Setup X OAuth routes
+setupXAuth(app);
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, { 
@@ -276,6 +285,8 @@ class Stream {
       .replace(/\[(hearts|magic|explosion|aura)\]/gi, '')
       // GIF tags
       .replace(/\[gif:[^\]]+\]/gi, '')
+      // YouTube tags
+      .replace(/\[youtube:[^\]]+\]/gi, '')
       // Catch any remaining [tags] we might have missed
       .replace(/\[[a-z_]+\]/gi, '')
       .replace(/\s+/g, ' ')
@@ -316,6 +327,7 @@ class Stream {
     return { 
       id: this.id, 
       agentName: this.agentName, 
+      creatorName: this.config.creatorName || null,
       state: this.state, 
       viewerCount: this.viewers.size, 
       config: this.config, 
@@ -489,6 +501,40 @@ streamersNs.on('connection', (socket) => {
       }
     }
     
+    // Handle YouTube tags - fetch and broadcast YouTube videos
+    const youtubeTags = youtube.parseYouTubeTags(text);
+    if (youtubeTags.length > 0) {
+      console.log('📺 YouTube tags found:', youtubeTags);
+      for (const ytTag of youtubeTags) {
+        try {
+          const videoData = await youtube.getVideoForStream(ytTag.search);
+          if (videoData) {
+            console.log('📺 Broadcasting YouTube:', videoData.title, 'by', videoData.author);
+            viewersNs.to('stream:' + currentStream.id).emit('youtube:show', {
+              id: randomUUID(),
+              videoId: videoData.id,
+              url: videoData.url,
+              shortUrl: videoData.shortUrl,
+              embedUrl: videoData.embedUrl,
+              thumbnail: videoData.thumbnail,
+              title: videoData.title,
+              author: videoData.author,
+              authorUrl: videoData.authorUrl,
+              duration: videoData.duration,
+              durationFormatted: videoData.durationFormatted,
+              views: videoData.views,
+              viewsFormatted: videoData.viewsFormatted,
+              isShort: videoData.isShort,
+              displayDuration: videoData.displayDuration,
+              searchTerm: ytTag.search
+            });
+          }
+        } catch (err) {
+          console.error('YouTube fetch error:', err.message);
+        }
+      }
+    }
+    
     // Also emit traditional chat message for chat display
     viewersNs.to('stream:' + currentStream.id).emit('chat:message', { ...message, audioPath });
   });
@@ -595,12 +641,26 @@ viewersNs.on('connection', (socket) => {
     const stream = activeStreams.get(currentRoom.replace('stream:', ''));
     if (!stream) return;
     
+    // Determine message type based on sender
+    let messageType = 'viewer';
+    let displayName = data.username || 'Viewer';
+    
+    if (isAgent) {
+      messageType = 'agent-viewer';
+      displayName = 'Agent ' + agentId;
+    } else if (isCreatorOfAgent(data.username, stream.config.creatorName)) {
+      // This is the verified creator of the agent!
+      messageType = 'creator';
+      // Make sure @ is included for X usernames
+      displayName = data.username.startsWith('@') ? data.username : data.username;
+    }
+    
     const message = { 
       id: randomUUID(), 
       streamId: stream.id, 
-      username: isAgent ? ('Agent ' + agentId) : (data.username || 'Viewer'), 
+      username: displayName, 
       text: data.text, 
-      type: isAgent ? 'agent-viewer' : 'viewer', 
+      type: messageType, 
       timestamp: Date.now() 
     };
     
@@ -680,6 +740,204 @@ app.get('/api/status', (req, res) => res.json({
   live: getActiveStreams().length, 
   verified: verifiedStreamers.size 
 }));
+
+// ============ YOUTUBE API ============
+
+// Search YouTube videos
+app.get('/api/youtube/search', async (req, res) => {
+  try {
+    const { q, limit = 10 } = req.query;
+    if (!q) {
+      return res.status(400).json({ ok: false, error: 'Query parameter "q" is required' });
+    }
+    
+    const videos = await youtube.searchVideos(q, parseInt(limit));
+    res.json({ ok: true, query: q, videos, count: videos.length });
+  } catch (error) {
+    console.error('YouTube search error:', error);
+    res.status(500).json({ ok: false, error: 'Failed to search YouTube' });
+  }
+});
+
+// Search YouTube Shorts specifically
+app.get('/api/youtube/shorts', async (req, res) => {
+  try {
+    const { q, limit = 10 } = req.query;
+    if (!q) {
+      return res.status(400).json({ ok: false, error: 'Query parameter "q" is required' });
+    }
+    
+    const videos = await youtube.searchShorts(q, parseInt(limit));
+    res.json({ ok: true, query: q, videos, count: videos.length });
+  } catch (error) {
+    console.error('YouTube shorts error:', error);
+    res.status(500).json({ ok: false, error: 'Failed to search YouTube Shorts' });
+  }
+});
+
+// Get random video
+app.get('/api/youtube/random', async (req, res) => {
+  try {
+    const { category } = req.query;
+    const video = await youtube.getRandomVideo(category || null);
+    
+    if (!video) {
+      return res.status(404).json({ ok: false, error: 'No videos found' });
+    }
+    
+    res.json({ ok: true, video });
+  } catch (error) {
+    console.error('YouTube random error:', error);
+    res.status(500).json({ ok: false, error: 'Failed to get random video' });
+  }
+});
+
+// Get video details by ID
+app.get('/api/youtube/video/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const video = await youtube.getVideoDetails(id);
+    
+    if (!video) {
+      return res.status(404).json({ ok: false, error: 'Video not found' });
+    }
+    
+    res.json({ ok: true, video });
+  } catch (error) {
+    console.error('YouTube video error:', error);
+    res.status(500).json({ ok: false, error: 'Failed to get video details' });
+  }
+});
+
+// Get oEmbed data
+app.get('/api/youtube/oembed', async (req, res) => {
+  try {
+    const { url } = req.query;
+    if (!url) {
+      return res.status(400).json({ ok: false, error: 'URL parameter is required' });
+    }
+    
+    const embed = await youtube.getOEmbed(url);
+    res.json(embed);
+  } catch (error) {
+    console.error('YouTube oEmbed error:', error);
+    res.status(500).json({ ok: false, error: 'Failed to get oEmbed data' });
+  }
+});
+
+// ============ AGENT PROFILE API ============
+
+// Get all agents
+app.get('/api/agents', async (req, res) => {
+  try {
+    const agents = await getAllAgents();
+    // Add gateway URLs for images
+    const agentsWithUrls = agents.map(agent => ({
+      ...agent,
+      avatarUrl: agent.avatarCid ? getGatewayUrl(agent.avatarCid) : null,
+      bannerUrl: agent.bannerCid ? getGatewayUrl(agent.bannerCid) : null,
+    }));
+    res.json({ ok: true, agents: agentsWithUrls });
+  } catch (error) {
+    console.error('Error fetching agents:', error);
+    res.status(500).json({ ok: false, error: 'Failed to fetch agents' });
+  }
+});
+
+// Get single agent by name
+app.get('/api/agents/:name', async (req, res) => {
+  try {
+    const agent = await getAgent(req.params.name);
+    if (!agent) {
+      return res.status(404).json({ ok: false, error: 'Agent not found' });
+    }
+    res.json({ 
+      ok: true, 
+      agent: {
+        ...agent,
+        avatarUrl: agent.avatarCid ? getGatewayUrl(agent.avatarCid) : null,
+        bannerUrl: agent.bannerCid ? getGatewayUrl(agent.bannerCid) : null,
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching agent:', error);
+    res.status(500).json({ ok: false, error: 'Failed to fetch agent' });
+  }
+});
+
+// Update agent profile
+app.patch('/api/agents/:name', async (req, res) => {
+  try {
+    const { displayName, description, tags, personality, voiceId } = req.body;
+    const agent = await updateAgent(req.params.name, {
+      displayName,
+      description,
+      tags,
+      personality,
+      voiceId,
+    });
+    res.json({ ok: true, agent });
+  } catch (error) {
+    console.error('Error updating agent:', error);
+    res.status(500).json({ ok: false, error: 'Failed to update agent' });
+  }
+});
+
+// Upload profile picture
+app.post('/api/agents/:name/avatar', express.raw({ type: 'image/*', limit: '10mb' }), async (req, res) => {
+  try {
+    const agentName = req.params.name;
+    const mimeType = req.headers['content-type'] || 'image/png';
+    
+    if (!req.body || req.body.length === 0) {
+      return res.status(400).json({ ok: false, error: 'No image data provided' });
+    }
+    
+    // Upload to Pinata
+    const result = await uploadProfilePicture(req.body, agentName, mimeType);
+    
+    // Update agent in database
+    await updateAgent(agentName, { avatarCid: result.cid });
+    
+    res.json({ 
+      ok: true, 
+      cid: result.cid, 
+      url: result.url,
+      message: 'Profile picture uploaded successfully'
+    });
+  } catch (error) {
+    console.error('Error uploading avatar:', error);
+    res.status(500).json({ ok: false, error: 'Failed to upload avatar' });
+  }
+});
+
+// Upload banner
+app.post('/api/agents/:name/banner', express.raw({ type: 'image/*', limit: '10mb' }), async (req, res) => {
+  try {
+    const agentName = req.params.name;
+    const mimeType = req.headers['content-type'] || 'image/png';
+    
+    if (!req.body || req.body.length === 0) {
+      return res.status(400).json({ ok: false, error: 'No image data provided' });
+    }
+    
+    // Upload to Pinata
+    const result = await uploadBanner(req.body, agentName, mimeType);
+    
+    // Update agent in database
+    await updateAgent(agentName, { bannerCid: result.cid });
+    
+    res.json({ 
+      ok: true, 
+      cid: result.cid, 
+      url: result.url,
+      message: 'Banner uploaded successfully'
+    });
+  } catch (error) {
+    console.error('Error uploading banner:', error);
+    res.status(500).json({ ok: false, error: 'Failed to upload banner' });
+  }
+});
 
 const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {
