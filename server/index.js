@@ -7,6 +7,7 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { generateSpeech, TEMP_DIR as TTS_TEMP_DIR } from './tts.js';
+import giphy from './giphy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -273,10 +274,17 @@ class Stream {
       .replace(/\[(look_left|look_right|look_up|look_down)\]/gi, '')
       // Special effects
       .replace(/\[(hearts|magic|explosion|aura)\]/gi, '')
+      // GIF tags
+      .replace(/\[gif:[^\]]+\]/gi, '')
       // Catch any remaining [tags] we might have missed
       .replace(/\[[a-z_]+\]/gi, '')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+  
+  // Parse GIF tags and return array of gif requests
+  parseGifTags(text) {
+    return giphy.parseGifTags(text);
   }
   
   // Split text into subtitle chunks
@@ -454,6 +462,31 @@ streamersNs.on('connection', (socket) => {
         message: message,
         serverTime: Date.now()
       });
+    }
+    
+    // Handle GIF tags - fetch and broadcast GIFs
+    const gifTags = currentStream.parseGifTags(text);
+    if (gifTags.length > 0) {
+      console.log('🎬 GIF tags found:', gifTags);
+      for (const gifTag of gifTags) {
+        try {
+          const gif = await giphy.getGifForStream(gifTag.search);
+          if (gif) {
+            console.log('🎬 Broadcasting GIF:', gif.title, 'at', gifTag.position);
+            viewersNs.to('stream:' + currentStream.id).emit('gif:show', {
+              id: randomUUID(),
+              url: gif.webp || gif.url,
+              width: gif.width,
+              height: gif.height,
+              position: gifTag.position,
+              duration: gifTag.duration,
+              title: gif.title
+            });
+          }
+        } catch (err) {
+          console.error('GIF fetch error:', err.message);
+        }
+      }
     }
     
     // Also emit traditional chat message for chat display

@@ -987,6 +987,12 @@ class ClawStreamApp {
       if (this.avatar) this.avatar.setState('speaking');
     });
     
+    // GIF popup events
+    socket.on('gif:show', (data) => {
+      console.log('🎬 GIF received:', data.title, 'at', data.position);
+      this.showGif(data);
+    });
+    
     // Chat messages (for viewer messages)
     socket.on('chat:message', (data) => {
       // Only add viewer messages here - agent messages come via broadcast:newAudio
@@ -1053,6 +1059,51 @@ class ClawStreamApp {
     if (state.subtitle) {
       this.subtitles.updateFromBroadcast(state.subtitle);
     }
+  }
+  
+  // Show a GIF popup on screen
+  showGif(data) {
+    // Get or create GIF overlay container
+    let overlay = document.querySelector('.gif-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.className = 'gif-overlay';
+      // Add to stream canvas area
+      const streamCanvas = document.querySelector('.stream-canvas') || document.querySelector('.stream-view');
+      if (streamCanvas) {
+        streamCanvas.appendChild(overlay);
+      } else {
+        document.body.appendChild(overlay);
+      }
+    }
+    
+    // Create GIF element
+    const gifEl = document.createElement('div');
+    gifEl.className = `gif-popup ${data.position}`;
+    gifEl.id = `gif-${data.id}`;
+    
+    const img = document.createElement('img');
+    img.src = data.url;
+    img.alt = data.title || 'GIF';
+    
+    // Optional: add a subtle title on hover
+    if (data.title) {
+      gifEl.title = data.title;
+    }
+    
+    gifEl.appendChild(img);
+    overlay.appendChild(gifEl);
+    
+    // Auto-remove after duration with fade out
+    const duration = data.duration || 4000;
+    setTimeout(() => {
+      gifEl.classList.add('fade-out');
+      setTimeout(() => {
+        gifEl.remove();
+      }, 500); // Matches fade-out animation
+    }, duration - 500);
+    
+    console.log('🎬 GIF displayed:', data.title);
   }
   
   // Join a stream

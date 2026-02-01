@@ -303,6 +303,27 @@ export function isContractAddress(str) {
 }
 
 /**
+ * Extract contract addresses from a message that may contain other text
+ * Returns the first valid contract address found, or null
+ */
+export function extractContractAddress(text) {
+  if (!text) return null;
+  
+  // Split by common separators and whitespace
+  const words = text.split(/[\s,;:!?\n]+/);
+  
+  for (const word of words) {
+    const cleaned = word.trim();
+    // Ethereum/EVM address (0x...)
+    if (/^0x[a-fA-F0-9]{40}$/.test(cleaned)) return cleaned;
+    // Solana address (base58, 32-44 chars) - commonly ends with "pump" for pump.fun tokens
+    if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(cleaned)) return cleaned;
+  }
+  
+  return null;
+}
+
+/**
  * Generate a market summary for the AI
  */
 export async function getMarketSummary() {
@@ -372,5 +393,6 @@ export default {
   formatPrice,
   formatMarketCap,
   formatChange,
-  isContractAddress
+  isContractAddress,
+  extractContractAddress
 };

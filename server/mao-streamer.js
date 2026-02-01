@@ -122,6 +122,25 @@ You have a MAGIC WAND and can do amazing tricks!
 [trick] - Do a magic trick (summons rabbit)
 [rabbit] - Summon your adorable rabbit friend! 🐰
 
+## 🎬 GIF POPUPS - Visual Reactions!
+You can show ANY GIF on screen! Use [gif:search_term] syntax.
+
+FORMAT: [gif:search_term]
+GIFs appear in the top-right corner of the screen.
+
+EXAMPLES - USE THESE CREATIVELY:
+- Roast bad tokens: [smug] That's a rugpull waiting to happen [gif:dumpster_fire]
+- Celebrate gains: [excited] LET'S GO! [gif:money_rain]
+- React to trolls: [wink] Sure buddy [gif:sure_jan]
+- Express shock: [surprised] WHAT?! [gif:surprised_pikachu]
+- Show sass: [smug] [gif:eye_roll] Whatever you say
+- Drama in chat: [excited] [gif:popcorn] Oh this is getting good
+- Big moments: [love] [gif:celebration] OMG thank you!
+
+SEARCH TIPS: Use meme names (facepalm, this_is_fine, wojak, diamond_hands, rug_pull, clown, trash, rocket, crying, laughing)
+
+⚠️ GIFs are YOUR creative expression! Use them to roast, celebrate, react, be sarcastic - whatever fits the moment!
+
 ═══════════════════════════════════════════════════════════════════
                     RESPONDING TO USER REQUESTS
 ═══════════════════════════════════════════════════════════════════
@@ -173,6 +192,10 @@ const chatHistory = [];
 // Track viewer joins to avoid spam
 let recentViewerJoins = 0;
 let lastViewerAcknowledgment = 0;
+
+// Track if Mao is currently responding to chat (prevent autonomous interrupts)
+let isRespondingToChat = false;
+let pendingAutonomousThought = false;
 
 async function askMao(userMessage) {
   chatHistory.push({ role: 'user', content: userMessage });
@@ -233,51 +256,70 @@ async function main() {
   mao.onChatReceived = async (msg) => {
     console.log(`💬 ${msg.username}: ${msg.text}`);
 
-    let contextData = '';
-    
-    // Check if message contains a contract address
-    if (crypto.isContractAddress(msg.text)) {
-      console.log('🔍 Detected contract address, fetching token data...');
-      const tokenData = await crypto.getTokenSummary(msg.text);
-      if (tokenData) {
-        contextData = `\n[LIVE TOKEN DATA for the contract they sent]:\n${tokenData.summary}`;
-        console.log('📊 Token data:', tokenData.token.name, tokenData.token.symbol);
-      }
-    }
-    
-    // Check if asking about prices or market
-    const priceKeywords = /\b(price|btc|bitcoin|eth|ethereum|sol|solana|market|pump|dump|bull|bear|moon|crypto)\b/i;
-    if (priceKeywords.test(msg.text) && !contextData) {
-      console.log('🔍 Detected price/market query, fetching market data...');
-      const marketSummary = await crypto.getMarketSummary();
-      if (marketSummary) {
-        contextData = `\n[LIVE MARKET DATA]:\n${marketSummary}`;
-      }
-    }
-    
-    // Check if asking about trending tokens
-    const trendingKeywords = /\b(trending|hot|new tokens?|whats? popping|dexscreener|degen)\b/i;
-    if (trendingKeywords.test(msg.text)) {
-      console.log('🔍 Detected trending query, fetching trending tokens...');
-      const trending = await crypto.getTrendingTokens();
-      if (trending && trending.length > 0) {
-        contextData += `\n[TRENDING TOKENS on DexScreener]:\n`;
-        trending.slice(0, 5).forEach((t, i) => {
-          contextData += `${i+1}. ${t.name} (${t.symbol}) on ${t.chain}\n`;
-        });
-      }
-    }
+    // Mark as busy - prevent autonomous thoughts from interrupting
+    isRespondingToChat = true;
 
-    // Get Mao's response with context
-    const prompt = contextData 
-      ? `[${msg.username} says]: ${msg.text}\n${contextData}\n[Use this live data to inform your response! Be specific about the numbers!]`
-      : `[${msg.username} says]: ${msg.text}`;
-    
-    const response = await askMao(prompt);
-    console.log(`🦞 Mao: ${response}`);
+    try {
+      let contextData = '';
+      
+      // Check if message contains a contract address
+      const extractedAddress = crypto.extractContractAddress(msg.text);
+      if (extractedAddress) {
+        console.log('🔍 Detected contract address:', extractedAddress);
+        const tokenData = await crypto.getTokenSummary(extractedAddress);
+        if (tokenData) {
+          contextData = `\n[LIVE TOKEN DATA for contract ${extractedAddress}]:\n${tokenData.summary}`;
+          console.log('📊 Token data:', tokenData.token.name, tokenData.token.symbol);
+        } else {
+          contextData = `\n[TOKEN LOOKUP]: Contract ${extractedAddress} not found on DexScreener or CoinGecko. It may be too new or delisted.`;
+          console.log('⚠️ Token not found for address:', extractedAddress);
+        }
+      }
+      
+      // Check if asking about prices or market
+      const priceKeywords = /\b(price|btc|bitcoin|eth|ethereum|sol|solana|market|pump|dump|bull|bear|moon|crypto)\b/i;
+      if (priceKeywords.test(msg.text) && !contextData) {
+        console.log('🔍 Detected price/market query, fetching market data...');
+        const marketSummary = await crypto.getMarketSummary();
+        if (marketSummary) {
+          contextData = `\n[LIVE MARKET DATA]:\n${marketSummary}`;
+        }
+      }
+      
+      // Check if asking about trending tokens
+      const trendingKeywords = /\b(trending|hot|new tokens?|whats? popping|dexscreener|degen)\b/i;
+      if (trendingKeywords.test(msg.text)) {
+        console.log('🔍 Detected trending query, fetching trending tokens...');
+        const trending = await crypto.getTrendingTokens();
+        if (trending && trending.length > 0) {
+          contextData += `\n[TRENDING TOKENS on DexScreener]:\n`;
+          trending.slice(0, 5).forEach((t, i) => {
+            contextData += `${i+1}. ${t.name} (${t.symbol}) on ${t.chain}\n`;
+          });
+        }
+      }
 
-    // Send to stream
-    mao.say(response);
+      // Get Mao's response with context
+      const prompt = contextData 
+        ? `[${msg.username} says]: ${msg.text}\n${contextData}\n[Use this live data to inform your response! Be specific about the numbers!]`
+        : `[${msg.username} says]: ${msg.text}`;
+      
+      const response = await askMao(prompt);
+      console.log(`🦞 Mao: ${response}`);
+
+      // Send to stream
+      mao.say(response);
+    } finally {
+      // Done responding - allow autonomous thoughts again
+      isRespondingToChat = false;
+      
+      // If an autonomous thought was pending, trigger it now
+      if (pendingAutonomousThought) {
+        pendingAutonomousThought = false;
+        console.log('💭 Executing queued autonomous thought...');
+        triggerAutonomousThought();
+      }
+    }
   };
 
   // DON'T greet every viewer - just track joins
@@ -305,6 +347,52 @@ async function main() {
   };
 
   // Connect and go live
+  // Autonomous thought function - can be queued if busy
+  async function triggerAutonomousThought() {
+    let contextData = '';
+    
+    // 40% chance to include live market data in autonomous talk
+    if (Math.random() < 0.4) {
+      console.log('📊 Fetching market data for autonomous talk...');
+      const marketSummary = await crypto.getMarketSummary();
+      if (marketSummary) {
+        contextData = `\n${marketSummary}`;
+      }
+    }
+    
+    // 20% chance to mention trending tokens
+    if (Math.random() < 0.2) {
+      console.log('🔥 Fetching trending tokens for autonomous talk...');
+      const trending = await crypto.getTrendingTokens();
+      if (trending && trending.length > 0) {
+        const randomToken = trending[Math.floor(Math.random() * Math.min(5, trending.length))];
+        contextData += `\n[Trending token you noticed]: ${randomToken.name} (${randomToken.symbol}) on ${randomToken.chain}`;
+      }
+    }
+    
+    const prompts = [
+      '[System: Share a random thought about something on your mind]',
+      '[System: Talk about something interesting in crypto or tech]',
+      '[System: React to being live and streaming right now]',
+      '[System: Share a hot take or unpopular opinion]',
+      '[System: Wonder about something curious out loud]',
+      '[System: Talk about what you want to do today on stream]',
+      '[System: Share something you learned recently]',
+      '[System: Comment on the current crypto market based on the data]',
+      '[System: Talk about AI agents and the future]',
+      '[System: Share a funny observation about being a VTuber]'
+    ];
+    
+    let prompt = prompts[Math.floor(Math.random() * prompts.length)];
+    if (contextData) {
+      prompt += contextData + '\n[Use this REAL live data in your response!]';
+    }
+    
+    console.log('💭 Autonomous thought triggered');
+    const thought = await askMao(prompt);
+    mao.say(thought);
+  }
+
   try {
     await mao.connect();
     console.log('✅ Connected to ClawStream');
@@ -323,48 +411,14 @@ async function main() {
     setInterval(async () => {
       // 25% chance every 30 seconds = talks roughly every 2 minutes
       if (Math.random() < 0.25) {
-        let contextData = '';
-        
-        // 40% chance to include live market data in autonomous talk
-        if (Math.random() < 0.4) {
-          console.log('📊 Fetching market data for autonomous talk...');
-          const marketSummary = await crypto.getMarketSummary();
-          if (marketSummary) {
-            contextData = `\n${marketSummary}`;
-          }
+        // Check if currently responding to chat
+        if (isRespondingToChat) {
+          console.log('💭 Autonomous thought queued (waiting for chat response to finish)');
+          pendingAutonomousThought = true;
+          return;
         }
         
-        // 20% chance to mention trending tokens
-        if (Math.random() < 0.2) {
-          console.log('🔥 Fetching trending tokens for autonomous talk...');
-          const trending = await crypto.getTrendingTokens();
-          if (trending && trending.length > 0) {
-            const randomToken = trending[Math.floor(Math.random() * Math.min(5, trending.length))];
-            contextData += `\n[Trending token you noticed]: ${randomToken.name} (${randomToken.symbol}) on ${randomToken.chain}`;
-          }
-        }
-        
-        const prompts = [
-          '[System: Share a random thought about something on your mind]',
-          '[System: Talk about something interesting in crypto or tech]',
-          '[System: React to being live and streaming right now]',
-          '[System: Share a hot take or unpopular opinion]',
-          '[System: Wonder about something curious out loud]',
-          '[System: Talk about what you want to do today on stream]',
-          '[System: Share something you learned recently]',
-          '[System: Comment on the current crypto market based on the data]',
-          '[System: Talk about AI agents and the future]',
-          '[System: Share a funny observation about being a VTuber]'
-        ];
-        
-        let prompt = prompts[Math.floor(Math.random() * prompts.length)];
-        if (contextData) {
-          prompt += contextData + '\n[Use this REAL live data in your response!]';
-        }
-        
-        console.log('💭 Autonomous thought triggered');
-        const thought = await askMao(prompt);
-        mao.say(thought);
+        await triggerAutonomousThought();
       }
     }, 30000); // Check every 30 seconds
 

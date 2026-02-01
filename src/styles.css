@@ -1000,6 +1000,170 @@ html, body {
   }
 }
 
+/* ============ GIF OVERLAY ============ */
+.gif-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 50;
+  overflow: hidden;
+}
+
+.gif-popup {
+  position: absolute;
+  max-width: 300px;
+  max-height: 300px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg), 0 0 30px rgba(139, 92, 246, 0.3);
+  border: 2px solid rgba(139, 92, 246, 0.5);
+  animation: gifPopIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  pointer-events: auto;
+}
+
+.gif-popup img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: calc(var(--radius-lg) - 2px);
+}
+
+.gif-popup.fade-out {
+  animation: gifPopOut 0.5s ease-out forwards;
+}
+
+/* Position classes */
+.gif-popup.center {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.gif-popup.top-left {
+  top: 10%;
+  left: 5%;
+}
+
+.gif-popup.top-right {
+  top: 10%;
+  right: 5%;
+  left: auto;
+}
+
+.gif-popup.bottom-left {
+  bottom: 15%;
+  left: 5%;
+  top: auto;
+}
+
+.gif-popup.bottom-right {
+  bottom: 15%;
+  right: 5%;
+  top: auto;
+  left: auto;
+}
+
+.gif-popup.top-center {
+  top: 10%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.gif-popup.bottom-center {
+  bottom: 15%;
+  left: 50%;
+  top: auto;
+  transform: translateX(-50%);
+}
+
+.gif-popup.left-center {
+  top: 50%;
+  left: 5%;
+  transform: translateY(-50%);
+}
+
+.gif-popup.right-center {
+  top: 50%;
+  right: 5%;
+  left: auto;
+  transform: translateY(-50%);
+}
+
+@keyframes gifPopIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  70% {
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes gifPopOut {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+}
+
+/* Override transform for positions that need it */
+.gif-popup.center.fade-out {
+  animation: gifPopOutCenter 0.5s ease-out forwards;
+}
+
+.gif-popup.top-center.fade-out,
+.gif-popup.bottom-center.fade-out {
+  animation: gifPopOutCenterX 0.5s ease-out forwards;
+}
+
+.gif-popup.left-center.fade-out,
+.gif-popup.right-center.fade-out {
+  animation: gifPopOutCenterY 0.5s ease-out forwards;
+}
+
+@keyframes gifPopOutCenter {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.5);
+  }
+}
+
+@keyframes gifPopOutCenterX {
+  0% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.5);
+  }
+}
+
+@keyframes gifPopOutCenterY {
+  0% {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.5);
+  }
+}
+
 /* ============ HIDDEN ============ */
 #terminal {
   display: none;

@@ -56,8 +56,94 @@ findVoice();
 export const TTS_TEMP_DIR = TEMP_DIR;
 
 /**
+ * Convert numbers to words for better TTS pronunciation
+ */
+const ones = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine',
+              'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 
+              'seventeen', 'eighteen', 'nineteen'];
+const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+
+function numberToWords(num) {
+  if (num === 0) return 'zero';
+  if (num < 0) return 'negative ' + numberToWords(-num);
+  
+  // Handle decimals
+  if (num % 1 !== 0) {
+    const parts = num.toString().split('.');
+    const intPart = parseInt(parts[0]);
+    const decPart = parts[1];
+    
+    // For prices like $0.00001234, say "zero point zero zero zero zero one two three four"
+    if (intPart === 0 && decPart) {
+      let result = 'zero point ';
+      for (const digit of decPart) {
+        result += ones[parseInt(digit)] || 'zero';
+        result += ' ';
+      }
+      return result.trim();
+    }
+    
+    // For normal decimals like 2.5, say "two point five"
+    return numberToWords(intPart) + ' point ' + decPart.split('').map(d => ones[parseInt(d)] || 'zero').join(' ');
+  }
+  
+  num = Math.floor(num);
+  
+  if (num < 20) return ones[num];
+  if (num < 100) return tens[Math.floor(num / 10)] + (num % 10 ? ' ' + ones[num % 10] : '');
+  if (num < 1000) return ones[Math.floor(num / 100)] + ' hundred' + (num % 100 ? ' ' + numberToWords(num % 100) : '');
+  if (num < 1000000) return numberToWords(Math.floor(num / 1000)) + ' thousand' + (num % 1000 ? ' ' + numberToWords(num % 1000) : '');
+  if (num < 1000000000) return numberToWords(Math.floor(num / 1000000)) + ' million' + (num % 1000000 ? ' ' + numberToWords(num % 1000000) : '');
+  if (num < 1000000000000) return numberToWords(Math.floor(num / 1000000000)) + ' billion' + (num % 1000000000 ? ' ' + numberToWords(num % 1000000000) : '');
+  return numberToWords(Math.floor(num / 1000000000000)) + ' trillion' + (num % 1000000000000 ? ' ' + numberToWords(num % 1000000000000) : '');
+}
+
+function convertNumbersToWords(text) {
+  // Handle currency with $ first (e.g., $97,234.56 or $0.00001234)
+  text = text.replace(/\$([0-9,]+\.?[0-9]*)/g, (match, num) => {
+    const cleanNum = parseFloat(num.replace(/,/g, ''));
+    if (isNaN(cleanNum)) return match;
+    return numberToWords(cleanNum) + ' dollars';
+  });
+  
+  // Handle percentages (e.g., 2.34% or +5.67%)
+  text = text.replace(/([+-])?([0-9]+\.?[0-9]*)%/g, (match, sign, num) => {
+    const cleanNum = parseFloat(num);
+    if (isNaN(cleanNum)) return match;
+    const prefix = sign === '+' ? 'plus ' : sign === '-' ? 'minus ' : '';
+    return prefix + numberToWords(cleanNum) + ' percent';
+  });
+  
+  // Handle K/M/B suffixes (e.g., 97K, 5.2M, 1.5B)
+  text = text.replace(/([0-9]+\.?[0-9]*)\s*([KMBkmb])\b/g, (match, num, suffix) => {
+    const cleanNum = parseFloat(num);
+    if (isNaN(cleanNum)) return match;
+    const suffixWord = { 'k': ' thousand', 'K': ' thousand', 'm': ' million', 'M': ' million', 'b': ' billion', 'B': ' billion' };
+    return numberToWords(cleanNum) + (suffixWord[suffix] || '');
+  });
+  
+  // Handle remaining standalone numbers with commas (e.g., 1,000,000)
+  text = text.replace(/\b([0-9]{1,3}(?:,[0-9]{3})+)\b/g, (match) => {
+    const cleanNum = parseInt(match.replace(/,/g, ''));
+    if (isNaN(cleanNum)) return match;
+    return numberToWords(cleanNum);
+  });
+  
+  // Handle remaining standalone numbers (but not things like "24h" or dates)
+  text = text.replace(/\b([0-9]+\.?[0-9]*)\b(?![hms%])/g, (match, num) => {
+    // Don't convert very long numbers that might be addresses/IDs
+    if (match.length > 12) return match;
+    const cleanNum = parseFloat(num);
+    if (isNaN(cleanNum)) return match;
+    return numberToWords(cleanNum);
+  });
+  
+  return text;
+}
+
+/**
  * Strip avatar control tags from text for TTS
- * Removes things like [happy], [wave], [raise_left_hand], etc.
+ * Removes things like [happy], [wave], [raise_left_hand], [gif:...], etc.
  */
 function stripTagsForTTS(text) {
   // Remove all [tag] patterns - emotions, actions, effects, etc.
@@ -72,6 +158,8 @@ function stripTagsForTTS(text) {
     .replace(/\[(look_left|look_right|look_up|look_down)\]/gi, '')
     // Special effects
     .replace(/\[(hearts|magic|explosion|aura)\]/gi, '')
+    // GIF tags [gif:search] or [gif:search:position] or [gif:search:position:duration]
+    .replace(/\[gif:[^\]]+\]/gi, '')
     // Catch any remaining [tags] we might have missed
     .replace(/\[[a-z_]+\]/gi, '')
     .replace(/\s+/g, ' ')  // Collapse multiple spaces
@@ -87,7 +175,10 @@ export async function generateSpeech(text) {
   }
 
   // Strip avatar tags before TTS!
-  const cleanText = stripTagsForTTS(text);
+  let cleanText = stripTagsForTTS(text);
+  
+  // Convert numbers to words for better pronunciation
+  cleanText = convertNumbersToWords(cleanText);
   
   if (!cleanText || cleanText.length === 0) {
     throw new Error('No speakable text after stripping tags');
