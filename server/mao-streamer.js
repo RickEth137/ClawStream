@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// mao-streamer.js - Runs Mao as a ClawStream streamer
-// This connects OpenClaw to ClawStream
+// mao-streamer.js - Runs Mao as a Lobster streamer
+// This connects OpenClaw to Lobster
 
 import { spawn } from 'child_process';
-import { ClawStreamAgent } from './agent-connector.js';
+import { LobsterAgent } from './agent-connector.js';
 import Anthropic from '@anthropic-ai/sdk';
 import fs from 'fs';
 import dotenv from 'dotenv';
@@ -15,7 +15,7 @@ dotenv.config();
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 if (!ANTHROPIC_API_KEY) {
   console.error('❌ ANTHROPIC_API_KEY not set in .env file!');
-  console.error('Add it to ~/ClawStream/.env like:');
+  console.error('Add it to ~/Lobster/.env like:');
   console.error('ANTHROPIC_API_KEY=sk-ant-...');
   process.exit(1);
 }
@@ -37,7 +37,7 @@ function buildSystemPrompt() {
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
   
-  return `You are Mao, a VTuber streaming live on ClawStream.
+  return `You are Mao, a VTuber streaming live on Lobster.
 
 ═══════════════════════════════════════════════════════════════════
                     CURRENT DATE & TIME
@@ -400,8 +400,8 @@ async function askMao(userMessage, searchContext = '') {
 async function main() {
   console.log('🦞 Starting Mao Streamer...');
 
-  // Create ClawStream agent
-  const mao = new ClawStreamAgent({
+  // Create Lobster agent
+  const mao = new LobsterAgent({
     agentId: 'mao',
     agentName: 'Mao 🦞',
     secret: 'mao-secret-key',
@@ -608,7 +608,7 @@ async function main() {
 
   try {
     await mao.connect();
-    console.log('✅ Connected to ClawStream');
+    console.log('✅ Connected to Lobster');
 
     mao.goLive();
     console.log('🔴 Mao is LIVE!');

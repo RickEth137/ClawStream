@@ -1,9 +1,9 @@
-// ClawStream Agent Connector
-// Use this to connect an OpenClaw agent to ClawStream as a streamer
+// Lobster Agent Connector
+// Use this to connect an OpenClaw agent to Lobster as a streamer
 
 import { io } from 'socket.io-client';
 
-export class ClawStreamAgent {
+export class LobsterAgent {
   constructor({ agentId, agentName, secret, serverUrl = 'http://localhost:3001', config = {} }) {
     this.agentId = agentId;
     this.agentName = agentName;
@@ -21,7 +21,7 @@ export class ClawStreamAgent {
       this.socket = io(this.serverUrl + '/streamers', { transports: ['websocket'] });
       
       this.socket.on('connect', () => {
-        console.log('Connected to ClawStream');
+        console.log('Connected to Lobster');
         resolve();
       });
       

@@ -1,5 +1,5 @@
 #!/bin/bash
-cd /home/claw/ClawStream
+cd /home/claw/Lobster
 
 # Kill any existing processes on the ports
 fuser -k 3001/tcp 2>/dev/null

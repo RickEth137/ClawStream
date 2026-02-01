@@ -1,5 +1,5 @@
 // server/x-auth.js
-// X (Twitter) OAuth 2.0 Authentication for ClawStream creators
+// X (Twitter) OAuth 2.0 Authentication for Lobster creators
 
 import crypto from 'crypto';
 
@@ -82,17 +82,19 @@ export function setupXAuth(app) {
   app.get('/auth/x/callback', async (req, res) => {
     const { code, state, error } = req.query;
 
+    const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+    
     if (error) {
-      return res.redirect(`/?auth_error=${encodeURIComponent(error)}`);
+      return res.redirect(`${FRONTEND_URL}/?auth_error=${encodeURIComponent(error)}`);
     }
 
     if (!code || !state) {
-      return res.redirect('/?auth_error=missing_params');
+      return res.redirect(`${FRONTEND_URL}/?auth_error=missing_params`);
     }
 
     const pkceData = pkceStore.get(state);
     if (!pkceData) {
-      return res.redirect('/?auth_error=invalid_state');
+      return res.redirect(`${FRONTEND_URL}/?auth_error=invalid_state`);
     }
 
     pkceStore.delete(state);
@@ -116,7 +118,7 @@ export function setupXAuth(app) {
       if (!tokenResponse.ok) {
         const errorText = await tokenResponse.text();
         console.error('Token exchange failed:', errorText);
-        return res.redirect('/?auth_error=token_exchange_failed');
+        return res.redirect(`${FRONTEND_URL}/?auth_error=token_exchange_failed`);
       }
 
       const tokens = await tokenResponse.json();
@@ -129,7 +131,7 @@ export function setupXAuth(app) {
       });
 
       if (!userResponse.ok) {
-        return res.redirect('/?auth_error=user_fetch_failed');
+        return res.redirect(`${FRONTEND_URL}/?auth_error=user_fetch_failed`);
       }
 
       const userData = await userResponse.json();
@@ -150,23 +152,23 @@ export function setupXAuth(app) {
       console.log(`✅ X auth success: @${xUser.username} for agent ${pkceData.agentId}`);
 
       // Redirect back with session cookie
-      res.cookie('clawstream_session', sessionId, {
+      res.cookie('lobster_session', sessionId, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       });
 
-      res.redirect(`/profile/${pkceData.agentId}?auth_success=true`);
+      res.redirect(`${FRONTEND_URL}/create-agent?auth_success=true`);
     } catch (err) {
       console.error('X auth error:', err);
-      res.redirect('/?auth_error=server_error');
+      res.redirect(`${FRONTEND_URL}/?auth_error=server_error`);
     }
   });
 
   // Get current session
   app.get('/auth/x/session', (req, res) => {
-    const sessionId = req.cookies?.clawstream_session;
+    const sessionId = req.cookies?.lobster_session;
     
     if (!sessionId) {
       return res.json({ authenticated: false });
@@ -187,19 +189,19 @@ export function setupXAuth(app) {
 
   // Logout
   app.post('/auth/x/logout', (req, res) => {
-    const sessionId = req.cookies?.clawstream_session;
+    const sessionId = req.cookies?.lobster_session;
     
     if (sessionId) {
       sessions.delete(sessionId);
     }
 
-    res.clearCookie('clawstream_session');
+    res.clearCookie('lobster_session');
     res.json({ ok: true });
   });
 
   // Link X account to agent (called after auth)
   app.post('/api/agents/:name/link-x', async (req, res) => {
-    const sessionId = req.cookies?.clawstream_session;
+    const sessionId = req.cookies?.lobster_session;
     
     if (!sessionId) {
       return res.status(401).json({ error: 'Not authenticated' });

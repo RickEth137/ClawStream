@@ -1,4 +1,4 @@
-// ClawStream TRUE LIVE Frontend
+// Lobster TRUE LIVE Frontend
 // This is a PASSIVE RECEIVER - it renders exactly what the server broadcasts
 // All viewers see the SAME thing at the SAME time
 
@@ -768,19 +768,19 @@ class ChatSystem {
   // Get username from X auth or localStorage
   async getUsername() {
     // Check if we have a cached X username
-    const cachedXUsername = localStorage.getItem('clawstream_x_username');
+    const cachedXUsername = localStorage.getItem('lobster_x_username');
     if (cachedXUsername) {
       return cachedXUsername;
     }
     
     // Try to get X auth session
     try {
-      const res = await fetch('/auth/x/session', { credentials: 'include' });
+      const res = await fetch('http://localhost:3001/auth/x/session', { credentials: 'include' });
       const data = await res.json();
       
       if (data.authenticated && data.xUsername) {
         const username = `@${data.xUsername}`;
-        localStorage.setItem('clawstream_x_username', username);
+        localStorage.setItem('lobster_x_username', username);
         return username;
       }
     } catch (e) {
@@ -788,13 +788,13 @@ class ChatSystem {
     }
     
     // Fallback to localStorage username or prompt
-    let username = localStorage.getItem('clawstream_username');
+    let username = localStorage.getItem('lobster_username');
     if (!username) {
       username = prompt('Enter your username (or login with X for verified identity):');
       if (!username) return null;
       username = username.trim();
       if (!username) return null;
-      localStorage.setItem('clawstream_username', username);
+      localStorage.setItem('lobster_username', username);
     }
     
     return username;
@@ -834,8 +834,8 @@ class SetupWizard {
   bindEvents() {
     // Step 1: X Login
     document.getElementById('loginWithXBtn')?.addEventListener('click', () => {
-      // Redirect to X OAuth - we'll create the agent after auth
-      window.location.href = '/auth/x/login?agentId=new';
+      // Redirect to X OAuth on the backend server (port 3001)
+      window.location.href = 'http://localhost:3001/auth/x/login?agentId=new';
     });
     
     document.getElementById('step1Next')?.addEventListener('click', () => {
@@ -853,9 +853,23 @@ class SetupWizard {
       if (this.agentName) this.goToStep(3);
     });
     
-    // Step 3: Skills
-    document.getElementById('downloadSkillsBtn')?.addEventListener('click', () => {
-      this.downloadSkills();
+    // Step 3: Install Command
+    document.getElementById('copyInstallCmd')?.addEventListener('click', () => {
+      navigator.clipboard.writeText('npx molthub@latest install lobster');
+      const btn = document.getElementById('copyInstallCmd');
+      btn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      `;
+      setTimeout(() => {
+        btn.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+        `;
+      }, 2000);
     });
     
     document.getElementById('step3Back')?.addEventListener('click', () => this.goToStep(2));
@@ -868,9 +882,19 @@ class SetupWizard {
     document.getElementById('step4Back')?.addEventListener('click', () => this.goToStep(3));
     document.getElementById('copyCodeBtn')?.addEventListener('click', () => {
       navigator.clipboard.writeText(this.connectionCode);
-      document.getElementById('copyCodeBtn').textContent = '✓';
+      const btn = document.getElementById('copyCodeBtn');
+      btn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      `;
       setTimeout(() => {
-        document.getElementById('copyCodeBtn').textContent = '📋';
+        btn.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+        `;
       }, 2000);
     });
     
@@ -881,7 +905,7 @@ class SetupWizard {
   
   async checkXAuth() {
     try {
-      const res = await fetch('/auth/x/session', { credentials: 'include' });
+      const res = await fetch('http://localhost:3001/auth/x/session', { credentials: 'include' });
       const data = await res.json();
       
       if (data.authenticated) {
@@ -899,7 +923,9 @@ class SetupWizard {
     const status = document.getElementById('xAuthStatus');
     if (authenticated) {
       status.innerHTML = `
-        <span class="status-icon">✅</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
         <span>Logged in as @${username}</span>
       `;
       status.classList.add('authenticated');
@@ -938,7 +964,7 @@ class SetupWizard {
   
   async registerConnectionCode() {
     try {
-      const res = await fetch('/api/connection-codes', {
+      const res = await fetch('http://localhost:3001/api/connection-codes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -959,7 +985,7 @@ class SetupWizard {
     // Poll for connection status
     this.connectionInterval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/connection-codes/${this.connectionCode}`, {
+        const res = await fetch(`http://localhost:3001/api/connection-codes/${this.connectionCode}`, {
           credentials: 'include'
         });
         const data = await res.json();
@@ -979,7 +1005,7 @@ class SetupWizard {
   async createAgentAndGoLive() {
     try {
       // Create the agent in the database
-      const res = await fetch('/api/agents', {
+      const res = await fetch('http://localhost:3001/api/agents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1013,7 +1039,7 @@ class SetupWizard {
 }
 
 // ============ MAIN APPLICATION ============
-class ClawStreamApp {
+class LobsterApp {
   constructor() {
     this.audioPlayer = new SyncedAudioPlayer();
     this.avatar = null;
@@ -1025,7 +1051,7 @@ class ClawStreamApp {
   }
   
   async init() {
-    console.log('🦞 ClawStream TRUE LIVE initializing...');
+    console.log('🦞 Lobster TRUE LIVE initializing...');
     
     try {
       // Setup socket handlers first
@@ -1041,7 +1067,7 @@ class ClawStreamApp {
       this.showBrowsePage();
       
       // Chat will be initialized when joining a stream
-      console.log('🦞 ClawStream ready!');
+      console.log('🦞 Lobster ready!');
     } catch (err) {
       console.error('🦞 Init error:', err);
     }
@@ -1432,7 +1458,7 @@ class ClawStreamApp {
   async renderBrowsePage() {
     console.log('📺 renderBrowsePage called');
     try {
-      const res = await fetch('/api/streams');
+      const res = await fetch('http://localhost:3001/api/streams');
       console.log('📺 Fetch response status:', res.status);
       const data = await res.json();
       console.log('📺 API response:', data);
@@ -2082,7 +2108,7 @@ class ClawStreamApp {
 }
 
 // ============ INITIALIZE ============
-const app = new ClawStreamApp();
+const app = new LobsterApp();
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => app.init());

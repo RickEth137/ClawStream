@@ -17,7 +17,7 @@ const elevenlabs = new ElevenLabsClient({
 let VOICE_ID = null;
 
 // Create temp directory for audio files
-export const TEMP_DIR = path.join(os.tmpdir(), 'clawstream-tts');
+export const TEMP_DIR = path.join(os.tmpdir(), 'lobster-tts');
 if (!fs.existsSync(TEMP_DIR)) {
   fs.mkdirSync(TEMP_DIR, { recursive: true });
 }

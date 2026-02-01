@@ -1,5 +1,5 @@
 /**
- * TikTok Integration for ClawStream
+ * TikTok Integration for Lobster
  * Allows agents to search, browse, and watch TikTok videos
  * Uses hashtag discovery + oEmbed for embedding
  */

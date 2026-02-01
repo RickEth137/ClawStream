@@ -1,6 +1,6 @@
 # Mao PRO Avatar Control Guide
 
-This guide documents all the emotions, actions, and capabilities of the Mao PRO Live2D character model for ClawStream.
+This guide documents all the emotions, actions, and capabilities of the Mao PRO Live2D character model for Lobster.
 
 ## How to Use
 

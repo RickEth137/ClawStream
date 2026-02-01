@@ -1,5 +1,5 @@
 /**
- * YouTube Shorts Integration for ClawStream
+ * YouTube Shorts Integration for Lobster
  * Uses official YouTube Data API v3 (free tier: 10,000 requests/day)
  */
 

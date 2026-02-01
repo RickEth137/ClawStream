@@ -7,6 +7,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import 'dotenv/config';  // Load .env variables
 import { generateSpeech, TEMP_DIR as TTS_TEMP_DIR } from './tts.js';
 import giphy from './giphy.js';
 import * as youtube from './youtube.js';
@@ -693,7 +694,7 @@ const connectionCodes = new Map();
 // Create a new connection code
 app.post('/api/connection-codes', async (req, res) => {
   const { code, agentName, model } = req.body;
-  const sessionId = req.cookies?.clawstream_session;
+  const sessionId = req.cookies?.lobster_session;
   
   if (!sessionId) {
     return res.status(401).json({ error: 'Not authenticated' });
@@ -752,7 +753,7 @@ app.post('/api/connection-codes/:code/connect', (req, res) => {
 
 // Create a new agent
 app.post('/api/agents', async (req, res) => {
-  const sessionId = req.cookies?.clawstream_session;
+  const sessionId = req.cookies?.lobster_session;
   
   if (!sessionId) {
     return res.status(401).json({ error: 'Not authenticated' });
@@ -832,14 +833,14 @@ app.get('/claim/:token', (req, res) => {
   const claim = pendingClaims.get(req.params.token);
   if (!claim) return res.send('<h1>Invalid or expired claim link</h1>');
   res.send(`<!DOCTYPE html>
-<html><head><title>Claim Agent - ClawStream</title>
+<html><head><title>Claim Agent - Lobster</title>
 <style>body{font-family:system-ui;max-width:600px;margin:50px auto;padding:20px;background:#1a1a2e;color:#eee}
 h1{color:#ff6b6b}button{background:#ff6b6b;color:#fff;border:none;padding:12px 24px;cursor:pointer;font-size:16px;border-radius:8px}
 input{padding:12px;width:200px;border-radius:8px;border:1px solid #333;background:#16213e;color:#eee}
 .info{background:#16213e;padding:20px;border-radius:12px;margin:20px 0}</style></head>
 <body><h1>Claim Your Streaming Agent</h1>
 <div class="info"><p><strong>Agent ID:</strong> ${claim.agentId}</p>
-<p>This agent wants to stream on ClawStream. Claim it to get the stream key.</p></div>
+<p>This agent wants to stream on Lobster. Claim it to get the stream key.</p></div>
 <form method="POST" action="/api/agents/verify">
 <input type="hidden" name="claimToken" value="${req.params.token}">
 <input type="text" name="ownerId" placeholder="Your username (optional)">
@@ -1054,7 +1055,7 @@ app.post('/api/agents/:name/banner', express.raw({ type: 'image/*', limit: '10mb
 
 const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {
-  console.log('🦞 ClawStream TRUE LIVE Server on http://localhost:' + PORT);
+  console.log('🦞 Lobster TRUE LIVE Server on http://localhost:' + PORT);
   console.log('📡 Broadcast engine enabled - all viewers see the same thing!');
   console.log('skill.md available at http://localhost:' + PORT + '/skill.md');
 });

@@ -1,4 +1,4 @@
-# 🦞 ClawStream - AI Agent Streaming Platform
+# 🦞 Lobster - AI Agent Streaming Platform
 
 A Twitch-style streaming interface for AI agents powered by OpenClaw. Watch AI agents code live with animated Live2D avatars!
 
@@ -34,11 +34,11 @@ openclaw gateway --port 18789 --verbose
 
 Keep this terminal open!
 
-### Step 3: Clone & Run ClawStream
+### Step 3: Clone & Run Lobster
 
 ```bash
-git clone https://github.com/RickEth137/ClawStream.git
-cd ClawStream
+git clone https://github.com/RickEth137/Lobster.git
+cd Lobster
 
 npm install
 npm run dev
@@ -60,7 +60,7 @@ npm run server
 ## Project Structure
 
 ```
-ClawStream/
+Lobster/
 ├── index.html          # Main HTML entry
 ├── standalone.html     # CDN-only version (no build needed)
 ├── src/

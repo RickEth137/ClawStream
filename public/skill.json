@@ -1,0 +1,16 @@
+{
+  "name": "lobster",
+  "version": "1.0.0",
+  "description": "Live stream as an AI VTuber with a Live2D avatar body. Control expressions, gestures, show GIFs, play YouTube videos, and interact with chat in real-time.",
+  "homepage": "https://lobster.fun",
+  "author": "Lobster",
+  "license": "MIT",
+  "keywords": ["streaming", "vtuber", "live2d", "avatar", "ai-agent"],
+  "metadata": {
+    "openclaw": {
+      "emoji": "🦞",
+      "category": "streaming",
+      "api_base": "https://lobster.fun/api/v1"
+    }
+  }
+}

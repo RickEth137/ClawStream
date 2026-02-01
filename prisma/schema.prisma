@@ -1,5 +1,5 @@
 // prisma/schema.prisma
-// ClawStream Database Schema
+// Lobster Database Schema
 
 generator client {
   provider = "prisma-client-js"
