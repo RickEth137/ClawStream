@@ -58,7 +58,8 @@ class SyncedAudioPlayer {
     this.audio.addEventListener('ended', () => {
       console.log('🔊 Audio ended');
       this.isPlaying = false;
-      this.currentUrl = null;
+      // DON'T clear currentUrl here - keep it so late-join logic knows we already played this
+      // It will be cleared when new audio starts
       this.mouthOpenValue = 0;
     });
     
@@ -123,11 +124,6 @@ class SyncedAudioPlayer {
     // RMS is typically 0-0.5 for speech, amplify it
     const amplified = Math.min(1, rms * 3);
     
-    // Debug log every 10 frames
-    if (this._debugCounter % 10 === 0) {
-      console.log('🎤 Audio RMS:', rms.toFixed(3), '-> mouth:', amplified.toFixed(2));
-    }
-    
     this.mouthOpenValue = amplified;
     return this.mouthOpenValue;
   }
@@ -138,12 +134,10 @@ class SyncedAudioPlayer {
     
     const fullUrl = audioUrl.startsWith('http') ? audioUrl : `http://localhost:3001${audioUrl}`;
     
-    // If same audio, don't restart
-    if (this.currentUrl === fullUrl && this.isPlaying) {
+    // If same audio, don't restart (even if still loading)
+    if (this.currentUrl === fullUrl) {
       return;
     }
-    
-    console.log('🔊 Playing audio:', fullUrl);
     this.currentUrl = fullUrl;
     this.serverStartTime = serverStartTime;
     
@@ -340,12 +334,6 @@ class SyncedAvatar {
     // From model3.json: "Groups": [{"Name": "LipSync", "Ids": ["ParamA"]}]
     if (amplified > 0.01) {
       coreModel.setParameterValueById('ParamA', amplified);
-      
-      // Debug log occasionally
-      this._lipSyncDebugCount = (this._lipSyncDebugCount || 0) + 1;
-      if (this._lipSyncDebugCount % 30 === 0) {
-        console.log('👄 LipSync (beforeModelUpdate):', amplified.toFixed(2));
-      }
     }
     
     // Keep eyes open (counteract any expression that closes them)
@@ -412,14 +400,6 @@ class SyncedAvatar {
   // Note: Lip sync is now handled in applyLipSync() via beforeModelUpdate event
   tick(audioPlayer) {
     if (!this.model || !this.ready) return;
-    
-    // Frame counter for debug
-    this._frameCount = (this._frameCount || 0) + 1;
-    
-    // Log audio state periodically
-    if (audioPlayer && audioPlayer.isPlaying && this._frameCount % 120 === 0) {
-      console.log('🔊 Audio playing, analyser:', !!audioPlayer.analyser);
-    }
     
     // Apply other parameters (not lip sync - that's in applyLipSync via beforeModelUpdate)
     try {
@@ -670,90 +650,6 @@ class SyncedAvatar {
   }
 }
 
-// Create debug motion buttons
-function createMotionDebugButtons() {
-  // Remove existing debug panel if any
-  const existing = document.getElementById('motion-debug-panel');
-  if (existing) existing.remove();
-  
-  const panel = document.createElement('div');
-  panel.id = 'motion-debug-panel';
-  panel.style.cssText = 'position:fixed;top:10px;right:10px;z-index:9999;background:rgba(0,0,0,0.9);padding:15px;border-radius:8px;display:flex;flex-direction:column;gap:8px;border:2px solid #9147ff;max-height:90vh;overflow-y:auto;';
-  
-  const title = document.createElement('div');
-  title.textContent = '🎭 Debug Panel';
-  title.style.cssText = 'color:white;font-weight:bold;margin-bottom:5px;font-size:14px;';
-  panel.appendChild(title);
-  
-  // MOUTH TEST BUTTON - Simulates audio by setting _testMouthValue
-  const mouthTestBtn = document.createElement('button');
-  mouthTestBtn.textContent = '👄 TEST MOUTH (hold)';
-  mouthTestBtn.style.cssText = 'padding:8px 12px;cursor:pointer;background:#ff6600;color:white;border:none;border-radius:4px;font-weight:bold;';
-  let mouthInterval = null;
-  mouthTestBtn.onmousedown = () => {
-    console.log('👄 Manual mouth test START - injecting test value');
-    const avatar = window.syncedAvatar;
-    if (avatar) {
-      avatar._testMouthValue = 0.8; // Force mouth open
-    }
-    mouthInterval = setInterval(() => {
-      const avatar = window.syncedAvatar;
-      if (avatar) {
-        // Oscillate the mouth value for testing
-        avatar._testMouthValue = 0.5 + Math.sin(Date.now() / 100) * 0.4;
-      }
-    }, 50);
-  };
-  mouthTestBtn.onmouseup = () => {
-    clearInterval(mouthInterval);
-    console.log('👄 Manual mouth test END');
-    const avatar = window.syncedAvatar;
-    if (avatar) {
-      avatar._testMouthValue = 0;
-    }
-  };
-  mouthTestBtn.onmouseleave = mouthTestBtn.onmouseup;
-  panel.appendChild(mouthTestBtn);
-  
-  // Idle motion
-  const idleBtn = document.createElement('button');
-  idleBtn.textContent = 'Idle: mtn_01';
-  idleBtn.onclick = () => window.syncedAvatar?.debugPlayMotion('Idle', 0);
-  idleBtn.style.cssText = 'padding:8px 12px;cursor:pointer;background:#333;color:white;border:1px solid #666;border-radius:4px;';
-  panel.appendChild(idleBtn);
-  
-  // Gesture motions with correct names
-  const motions = [
-    { name: 'dance (mtn_02)', index: 0 },
-    { name: 'shy/cute (mtn_03)', index: 1 },
-    { name: 'think (mtn_04)', index: 2 },
-    { name: 'heart (special_01)', index: 3 },
-    { name: 'magic_heart (special_02)', index: 4 },
-    { name: 'rabbit (special_03)', index: 5 }
-  ];
-  
-  motions.forEach(m => {
-    const btn = document.createElement('button');
-    btn.textContent = m.name;
-    btn.onclick = () => window.syncedAvatar?.debugPlayMotion('', m.index);
-    btn.style.cssText = 'padding:8px 12px;cursor:pointer;background:#333;color:white;border:1px solid #666;border-radius:4px;';
-    panel.appendChild(btn);
-  });
-  
-  // Close button
-  const closeBtn = document.createElement('button');
-  closeBtn.textContent = '❌ Close Debug Panel';
-  closeBtn.onclick = () => panel.remove();
-  closeBtn.style.cssText = 'padding:8px 12px;cursor:pointer;background:#aa0000;color:white;border:none;border-radius:4px;margin-top:8px;';
-  panel.appendChild(closeBtn);
-  
-  document.body.appendChild(panel);
-  console.log('🎭 Debug panel created! Use TEST MOUTH to check if mouth moves.');
-}
-
-// Make it globally accessible
-window.createMotionDebugButtons = createMotionDebugButtons;
-
 // ============ TRUE LIVE: SYNCED SUBTITLES ============
 class SyncedSubtitles {
   constructor() {
@@ -960,17 +856,11 @@ class ClawStreamApp {
     
     // TRUE LIVE: Continuous broadcast state updates (20 fps)
     socket.on('broadcast:state', (state) => {
-      // Debug: log occasionally to avoid spam
-      if (Math.random() < 0.02 && state?.avatar?.mouthOpen > 0.1) {
-        console.log('👄 Broadcast mouth:', state.avatar.mouthOpen.toFixed(2), 'playing:', state.audio?.isPlaying);
-      }
       this.applyBroadcastState(state);
     });
     
     // TRUE LIVE: New audio started
     socket.on('broadcast:newAudio', (data) => {
-      console.log('📡 New audio broadcast:', data.audioUrl);
-      
       // Add message to chat
       if (data.message) {
         this.chat?.addMessage({
@@ -1042,6 +932,14 @@ class ClawStreamApp {
   applyBroadcastState(state) {
     if (!state) return;
     this.lastBroadcastState = state;
+    
+    // TRUE LIVE: If audio is playing and we don't have it, start playing (late join)
+    // Check BOTH isPlaying AND currentUrl to avoid race condition with broadcast:newAudio
+    const audioUrl = state.audio?.url ? (state.audio.url.startsWith('http') ? state.audio.url : `http://localhost:3001${state.audio.url}`) : null;
+    if (state.audio?.isPlaying && audioUrl && !this.audioPlayer.isPlaying && this.audioPlayer.currentUrl !== audioUrl) {
+      console.log('📡 Late join - tuning into current audio');
+      this.audioPlayer.playFromServer(state.audio.url, state.audio.startTime, state.audio.duration);
+    }
     
     // Update avatar
     if (this.avatar && state.avatar) {
@@ -1135,13 +1033,10 @@ class ClawStreamApp {
       this.avatar.setAudioPlayer(this.audioPlayer);
     }
     
-    // Show motion debug panel (remove this line later)
-    createMotionDebugButtons();
-    
     // Update URL
     window.history.pushState({ streamId }, '', `/stream/${streamId}`);
     
-    // Join the stream
+    // Join the stream - tune in to wherever it is NOW
     this.joinStream(streamId);
   }
   
@@ -1152,14 +1047,14 @@ class ClawStreamApp {
     document.getElementById('streamViewPage')?.classList.remove('active');
     document.getElementById('browsePage')?.classList.remove('hidden');
     
-    // Stop audio
+    // Stop audio FOR THIS VIEWER (stream continues on server)
     this.audioPlayer.stop();
     this.subtitles.hide();
     
     // Update URL
     window.history.pushState({}, '', '/');
     
-    // Leave current stream
+    // Leave current stream room (stream still continues, just not for us)
     if (currentStreamId) {
       socket.emit('stream:leave', { streamId: currentStreamId });
       currentStreamId = null;

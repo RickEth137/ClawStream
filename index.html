@@ -362,6 +362,29 @@
       </div>
     </header>
 
+    <!-- Now Playing Mini-Player (shows when listening while browsing) -->
+    <div class="now-playing-bar" id="nowPlayingBar" style="display: none;">
+      <div class="now-playing-content">
+        <div class="now-playing-pulse"></div>
+        <div class="now-playing-info">
+          <span class="now-playing-label">NOW PLAYING</span>
+          <span class="now-playing-title" id="nowPlayingTitle">Stream</span>
+        </div>
+        <button class="now-playing-btn" id="nowPlayingReturn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          Return to Stream
+        </button>
+        <button class="now-playing-close" id="nowPlayingClose">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+
     <!-- Browse Page -->
     <main class="browse-page" id="browsePage">
       <div class="browse-layout">
